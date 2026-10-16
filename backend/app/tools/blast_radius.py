@@ -52,10 +52,18 @@ def blast_radius(graph, service: str, depth: int = 3) -> ToolResult:
     for sid in affected:
         affected[sid].update(owners.get(sid, {"team": None, "on_call": None}))
     failing = {"id": f"svc:{service}", **owners.get(f"svc:{service}", {"team": None, "on_call": None})}
+    # who to page: the failing service's on-call and owner, plus the owning team of each affected service
+    for sid, o in owners.items():
+        if o["team"]:
+            paths.append({"nodes": [o["team"], sid], "edges": [edge_ref("OWNS", o["team"], sid)]})
+    if failing.get("on_call"):
+        paths.append({"nodes": [failing["on_call"], failing["id"]], "edges": [edge_ref("ON_CALL_FOR", failing["on_call"], failing["id"])]})
     tier1 = [a["name"] for a in affected.values() if a["tier"] == 1]
+    page = (f" Page {failing['on_call_name']} (on call for {service}, team {failing['team_name']})."
+            if failing.get("on_call") else f" Nobody is on call for {service}.")
     return ToolResult(
         data={"service": failing, "depth": depth, "affected": list(affected.values())},
         cypher=q.strip() + "\n\n" + OWNERS.strip(), params=params | {"ids": ids}, paths=paths, sources=sorted(sources),
         explanation=f"{len(affected)} service(s) depend on {service} within {depth} hops"
-                    + (f" ({len(tier1)} tier-1: {', '.join(tier1)})" if tier1 else "") + "; only current DEPENDS_ON edges.",
+                    + (f" ({len(tier1)} tier-1: {', '.join(tier1)})" if tier1 else "") + "; only current DEPENDS_ON edges." + page,
     )

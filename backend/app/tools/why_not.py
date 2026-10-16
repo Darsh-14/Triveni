@@ -81,6 +81,7 @@ def why_not(graph, kind: str, service: str, other: str | None = None, depth: int
     paths += [{"nodes": [h["id"], svc_id], "edges": [edge_ref(rel, h["id"], svc_id)], "superseded": True} for h in history]
     if owner:
         paths.append({"nodes": [owner, svc_id], "edges": [edge_ref("OWNS", owner, svc_id)]})
+        paths += [{"nodes": [c["id"], owner], "edges": [edge_ref("MEMBER_OF", c["id"], owner)]} for c in contacts]
     sources = sorted({h["source"] for h in history if h["source"]} | {h["ended_by"] for h in history if h["ended_by"]}
                      | ({owner_rows[0][1]} if owner_rows and owner_rows[0][1] else set()))
     data = {"kind": kind, "service": svc_id, "exists": bool(found), "found": found, "checked": check,
