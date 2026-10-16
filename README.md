@@ -62,7 +62,18 @@ _TODO: diagram + node/edge tables._
 See [docs/queries.md](docs/queries.md). Every query is listed with its track and where it is used.
 
 ## Eval
-_TODO: per-track table, graph agent vs flat TF-IDF baseline._
+15 questions, 5 per track, with ground truth from the seed generator. Triveni (graph tools over MCP + memory) vs a flat baseline (TF-IDF over passages of the same documents + the same model, no graph, no memory), both on `openai/gpt-oss-120b` via Groq. Full method, per-question results and notes: [docs/eval.md](docs/eval.md). Reproduce: `python -m backend.scripts.eval --out docs/eval.md`.
+
+| Track | System | Correct | Mean F1 | Answers with evidence | Median latency | Tokens / answer |
+|---|---|---|---|---|---|---|
+| 01 Act | Triveni | 5/5 | 0.93 | 100% | 12.4 s | 5544 |
+| 01 Act | Flat baseline | 1/5 | 0.45 | 60% | 1.7 s | 1519 |
+| 02 Remember & Coordinate | Triveni | 5/5 | 0.93 | 80% | 11.0 s | 4865 |
+| 02 Remember & Coordinate | Flat baseline | 0/5 | 0.00 | 60% | 1.9 s | 1161 |
+| 03 Company Brain | Triveni | 5/5 | 1.00 | 100% | 6.6 s | 5535 |
+| 03 Company Brain | Flat baseline | 3/5 | 0.60 | 60% | 1.3 s | 1027 |
+
+Where the baseline does fine (C1 owner/on-call, C2 decision chain, C4 owner change, A5 the blocking ADR), the answer sits in one or two documents. Where it fails, the answer is multi-hop (blast radius, path), global (PageRank, betweenness, orphans), in memory (episodes, procedures, handoffs, conversation), or needs current-vs-stale reasoning across documents (C5).
 
 ## Data
 All data is synthetic, produced by a deterministic generator (`backend/scripts/seed.py`). No private, login-gated, or personal data.

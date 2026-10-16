@@ -1,0 +1,647 @@
+[
+  {
+    "system": "Triveni",
+    "question": "A1",
+    "answer": "The services that would be impacted if **payments\u2011api** fails, within three dependency hops, are:\n\n- **invoice\u2011svc** \u2013 directly depends on payments\u2011api (1 hop)\u202f[svc:invoice-svc]  \n- **orders\u2011api** \u2013 directly depends on payments\u2011api (1 hop)\u202f[svc:orders-api]  \n- **cart\u2011api** \u2013 depends on orders\u2011api \u2192 payments\u2011api (2 hops)\u202f[svc:cart-api]  \n- **refund\u2011worker** \u2013 depends on invoice\u2011svc \u2192 payments\u2011api (2 hops)\u202f[svc:refund-worker]  \n- **checkout\u2011web** \u2013 depends on cart\u2011api \u2192 orders\u2011api \u2192 payments\u2011api (3 hops)\u202f[svc:checkout-web]\n\nThese five services form the blast radius for a payments\u2011api outage within three hops.\n\nENTITIES: svc:invoice-svc, svc:orders-api, svc:cart-api, svc:refund-worker, svc:checkout-web",
+    "predicted": [
+      "svc:cart-api",
+      "svc:checkout-web",
+      "svc:invoice-svc",
+      "svc:orders-api",
+      "svc:refund-worker"
+    ],
+    "expected": [
+      "svc:cart-api",
+      "svc:checkout-web",
+      "svc:invoice-svc",
+      "svc:orders-api",
+      "svc:refund-worker"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 14.0,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "blast_radius"
+    ],
+    "error": "",
+    "tokens": 5989
+  },
+  {
+    "system": "Flat baseline",
+    "question": "A1",
+    "answer": "The services that would be impacted within three dependency hops if **payments\u2011api** goes down are:\n\n* **orders\u2011api** \u2013 it directly depends on payments\u2011api\u3010doc:service-catalog\u3011  \n* **invoice\u2011svc** \u2013 it also directly depends on payments\u2011api\u3010doc:service-catalog\u3011\n\nNo other services are listed as depending on these two, so the impact does not extend beyond them within three hops.\n\nENTITIES: svc:orders-api, svc:invoice-svc",
+    "predicted": [
+      "svc:invoice-svc",
+      "svc:orders-api"
+    ],
+    "expected": [
+      "svc:cart-api",
+      "svc:checkout-web",
+      "svc:invoice-svc",
+      "svc:orders-api",
+      "svc:refund-worker"
+    ],
+    "correct": false,
+    "f1": 0.57,
+    "evidence": true,
+    "seconds": 5.2,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 1634
+  },
+  {
+    "system": "Triveni",
+    "question": "A2",
+    "answer": "checkout-web \u2192\u202fcart\u2011api \u2192\u202forders\u2011api \u2192\u202fpayments\u2011api  \n\nENTITIES: svc:checkout-web, svc:cart-api, svc:orders-api, svc:payments-api",
+    "predicted": [
+      "svc:cart-api",
+      "svc:checkout-web",
+      "svc:orders-api",
+      "svc:payments-api"
+    ],
+    "expected": [
+      "svc:cart-api",
+      "svc:checkout-web",
+      "svc:orders-api",
+      "svc:payments-api"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 12.4,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "shortest_path"
+    ],
+    "error": "",
+    "tokens": 5169
+  },
+  {
+    "system": "Flat baseline",
+    "question": "A2",
+    "answer": "The provided documents do not contain enough dependency information to determine a path from **checkout-web** to **payments\u2011api**. The listed dependencies for **checkout-web** (cart\u2011api, fraud\u2011scorer, reconciliation\u2011job, shipping\u2011quotes) do not include further relationships that lead to **payments\u2011api**, and no additional dependency data for those services is given in the documents. Therefore, the shortest dependency path cannot be identified from the available information.\n\nENTITIES:",
+    "predicted": [],
+    "expected": [
+      "svc:cart-api",
+      "svc:checkout-web",
+      "svc:orders-api",
+      "svc:payments-api"
+    ],
+    "correct": false,
+    "f1": 0.0,
+    "evidence": false,
+    "seconds": 1.7,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 1426
+  },
+  {
+    "system": "Triveni",
+    "question": "A3",
+    "answer": "**Most critical services (by dependency PageRank):**  \n1. **catalog\u2011sync** \u2013 highest score (0.05768) and many downstream services depend on it\u3010svc:catalog-sync\u3011  \n2. **referral\u2011svc** \u2013 second\u2011highest score (0.03412) with a large dependent set\u3010svc:referral-svc\u3011  \n3. **email\u2011sender** \u2013 third\u2011highest score (0.02516) and is a key downstream component\u3010svc:email-sender\u3011\n\nThese three services sit at the top of the dependency graph; failures would impact the widest set of other services.\n\nENTITIES: svc:catalog-sync, svc:referral-svc, svc:email-sender",
+    "predicted": [
+      "svc:catalog-sync",
+      "svc:email-sender",
+      "svc:referral-svc"
+    ],
+    "expected": [
+      "svc:catalog-sync",
+      "svc:email-sender",
+      "svc:referral-svc"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 7.4,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "critical_services"
+    ],
+    "error": "",
+    "tokens": 5716
+  },
+  {
+    "system": "Flat baseline",
+    "question": "A3",
+    "answer": "The services that are depended on by the greatest number of other services are:\n\n1. **email-sender** \u2013 depended on by 4 services (search\u2011api, session\u2011store, shipping\u2011quotes, reconciliation\u2011job)\u3010doc:service-catalog\u3011  \n2. **referral\u2011svc** \u2013 depended on by 4 services (tax\u2011calculator, user\u2011profile, shipping\u2011quotes, refund\u2011worker)\u3010doc:service-catalog\u3011  \n3. **ranking\u2011svc** \u2013 depended on by 3 services (user\u2011profile, search\u2011api, session\u2011store)\u3010doc:service-catalog\u3011\n\nThese three have the highest inbound dependency counts, making them the most critical by dependency structure.\n\nENTITIES: email-sender, referral-svc, ranking-svc",
+    "predicted": [
+      "svc:email-sender",
+      "svc:ranking-svc",
+      "svc:referral-svc"
+    ],
+    "expected": [
+      "svc:catalog-sync",
+      "svc:email-sender",
+      "svc:referral-svc"
+    ],
+    "correct": false,
+    "f1": 0.67,
+    "evidence": true,
+    "seconds": 3.6,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 2097
+  },
+  {
+    "system": "Triveni",
+    "question": "A4",
+    "answer": "pdf-renderer-v1, legacy-fax-gateway  \nENTITIES: svc:pdf-renderer-v1, svc:legacy-fax-gateway",
+    "predicted": [
+      "svc:legacy-fax-gateway",
+      "svc:pdf-renderer-v1"
+    ],
+    "expected": [
+      "svc:legacy-fax-gateway",
+      "svc:pdf-renderer-v1"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 11.1,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "find_orphans"
+    ],
+    "error": "",
+    "tokens": 5216
+  },
+  {
+    "system": "Flat baseline",
+    "question": "A4",
+    "answer": "The provided documents list the services that have no owning team (legacy\u2011fax\u2011gateway and pdf\u2011renderer\u2011v1), but they contain no information about on\u2011call engineers. Because the on\u2011call responsibility is not documented, we cannot determine which services satisfy both conditions.\n\nENTITIES:",
+    "predicted": [],
+    "expected": [
+      "svc:legacy-fax-gateway",
+      "svc:pdf-renderer-v1"
+    ],
+    "correct": false,
+    "f1": 0.0,
+    "evidence": false,
+    "seconds": 1.7,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 1501
+  },
+  {
+    "system": "Triveni",
+    "question": "A5",
+    "answer": "No \u2013 the retry policy on **orders\u2011api** cannot be changed. The current ADR **adr:019** explicitly forbids any\u202f`change_retry_policy` action for this service, superseding the earlier ADR\u202fadr:007\u202fthat had allowed tuning\u202f[adr:019]\u200b.\n\nENTITIES: svc:orders-api, adr:019",
+    "predicted": [
+      "adr:019",
+      "svc:orders-api"
+    ],
+    "expected": [
+      "adr:019"
+    ],
+    "correct": true,
+    "f1": 0.67,
+    "evidence": true,
+    "seconds": 17.4,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "decision_trail"
+    ],
+    "error": "",
+    "tokens": 5631
+  },
+  {
+    "system": "Flat baseline",
+    "question": "A5",
+    "answer": "No. The retry policy for **orders\u2011api** is frozen by **ADR\u2011019**, which locks the policy at 2 attempts and requires a new ADR for any change, superseding the earlier ADR\u2011007 that allowed tuning.  \n\n**Decision that blocks the change:** ADR\u2011019 (Freeze retry policy on orders\u2011api)\u3010doc:adr-019\u3011  \n\nENTITIES: adr:019",
+    "predicted": [
+      "adr:019"
+    ],
+    "expected": [
+      "adr:019"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 1.4,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 936
+  },
+  {
+    "system": "Triveni",
+    "question": "B1",
+    "answer": "Yes \u2013 a similar timeout problem with\u202fpayments\u2011api was already investigated in episode\u202f**ep:0001**. The incident was resolved by applying the **Roll back payments\u2011api** procedure (**proc:rollback-payments**), which has been successful twice before.\n\n**Evidence**  \n- Recall of past episodes for\u202fsvc:payments\u2011api returned\u202fep:0001\u202fas the closest match, showing the same timeout symptom and a \u201cresolved\u201d outcome.  \n- The episode lists the procedure\u202fproc:rollback-payments\u202fwith a 100\u202f% success rate (2 successes, 0 failures).  \n\nENTITIES: ep:0001, proc:rollback-payments",
+    "predicted": [
+      "ep:0001",
+      "proc:rollback-payments"
+    ],
+    "expected": [
+      "ep:0001",
+      "proc:rollback-payments"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 11.6,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "recall"
+    ],
+    "error": "",
+    "tokens": 5671
+  },
+  {
+    "system": "Flat baseline",
+    "question": "B1",
+    "answer": "Yes.\u202fWe have already experienced a payments\u2011api connection\u2011timeout incident (inc\u202f0042). It was tracked in **Ticket\u202ftkt\u20110042** and investigated in **Postmortem\u202fpm\u20110042**, which identified an exhausted connection pool after the 2.12.0 deployment and resolved it by rolling back to 2.11.4. The appropriate response is to follow the post\u2011mortem procedure documented in **pm\u20110042**.\n\nENTITIES: svc:payments-api, doc:tkt-0042, doc:pm-0042",
+    "predicted": [
+      "doc:pm-0042",
+      "doc:tkt-0042",
+      "svc:payments-api"
+    ],
+    "expected": [
+      "ep:0001",
+      "proc:rollback-payments"
+    ],
+    "correct": false,
+    "f1": 0.0,
+    "evidence": true,
+    "seconds": 1.7,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 1281
+  },
+  {
+    "system": "Triveni",
+    "question": "B2",
+    "answer": "The last failure of **payments\u2011api** taught us that **reducing the service\u2019s connection\u2011pool size leads to pool exhaustion under checkout load; the pool configuration from the most recent deployment should be checked first**\u3010lesson:pool-exhaustion\u3011.\n\nENTITIES: lesson:pool-exhaustion",
+    "predicted": [
+      "lesson:pool-exhaustion"
+    ],
+    "expected": [
+      "lesson:pool-exhaustion"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 15.7,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "recall"
+    ],
+    "error": "",
+    "tokens": 5497
+  },
+  {
+    "system": "Flat baseline",
+    "question": "B2",
+    "answer": "The post\u2011mortem showed that the failure was caused by lowering the maximum connection\u2011pool size in version\u202f2.12.0, which exhausted the pool and led to checkout failures for over an hour. The key lesson we learned is to avoid reducing the connection\u2011pool size (or any critical resource limits) without thorough testing and validation, and to monitor pool usage closely when deploying new versions of\u202fpayments\u2011api\u3010doc:pm-0042\u3011.\n\nENTITIES: svc:payments-api",
+    "predicted": [
+      "svc:payments-api"
+    ],
+    "expected": [
+      "lesson:pool-exhaustion"
+    ],
+    "correct": false,
+    "f1": 0.0,
+    "evidence": true,
+    "seconds": 1.9,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 1472
+  },
+  {
+    "system": "Triveni",
+    "question": "B3",
+    "answer": "The last time\u202forders\u2011api\u202fexperienced slowness (incident\u202finc:0057), the successful fix was the **\u201cScale orders\u2011api workers\u201d** procedure \u2013 raising the worker pool and monitoring queue depth resolved the issue\u202f[proc:c55a5e4bd0d2].\n\nENTITIES: svc:orders-api, proc:c55a5e4bd0d2",
+    "predicted": [
+      "proc:c55a5e4bd0d2",
+      "svc:orders-api"
+    ],
+    "expected": [
+      "proc:c55a5e4bd0d2"
+    ],
+    "correct": true,
+    "f1": 0.67,
+    "evidence": true,
+    "seconds": 11.0,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "recall"
+    ],
+    "error": "",
+    "tokens": 5438
+  },
+  {
+    "system": "Flat baseline",
+    "question": "B3",
+    "answer": "The team previously mitigated orders\u2011api latency by increasing its retry settings \u2013 raising the\u202f`retry.max_attempts`\u202fto the allowed maximum (up to\u202f5) as described in ADR\u2011007 and the \u201ctuning orders\u2011api retries\u201d runbook\u3010doc:adr-007\u3011\u3010doc:rb-orders-retry\u3011.  \n\nENTITIES: adr:007, rb-orders-retry",
+    "predicted": [
+      "adr:007",
+      "rb-orders-retry"
+    ],
+    "expected": [
+      "proc:facb16141c0c"
+    ],
+    "correct": false,
+    "f1": 0.0,
+    "evidence": true,
+    "seconds": 2.6,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 1168
+  },
+  {
+    "system": "Triveni",
+    "question": "B4",
+    "answer": "The open handoff awaiting the remediation agent is **handoff:c2a9a64098ac** for **inc:0057**.\n\nENTITIES: handoff:c2a9a64098ac, inc:0057",
+    "predicted": [
+      "handoff:c2a9a64098ac",
+      "inc:0057"
+    ],
+    "expected": [
+      "handoff:c2a9a64098ac",
+      "inc:0057"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 9.2,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "list_handoffs"
+    ],
+    "error": "",
+    "tokens": 5161
+  },
+  {
+    "system": "Flat baseline",
+    "question": "B4",
+    "answer": "The provided documents do not contain any information about open handoffs waiting for the remediation agent or the incidents they relate to.\n\nENTITIES:",
+    "predicted": [],
+    "expected": [
+      "handoff:923e8e69292a",
+      "inc:0057"
+    ],
+    "correct": false,
+    "f1": 0.0,
+    "evidence": false,
+    "seconds": 0.8,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 784
+  },
+  {
+    "system": "Triveni",
+    "question": "B5",
+    "answer": "You said you\u2019re on the **Payments** team.\n\nENTITIES: team:payments",
+    "predicted": [
+      "team:payments"
+    ],
+    "expected": [
+      "team:payments"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": false,
+    "seconds": 4.0,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 2559
+  },
+  {
+    "system": "Flat baseline",
+    "question": "B5",
+    "answer": "The provided documents do not contain any information about which team you said you are on.\n\nENTITIES:",
+    "predicted": [],
+    "expected": [
+      "team:payments"
+    ],
+    "correct": false,
+    "f1": 0.0,
+    "evidence": false,
+    "seconds": 2.3,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 1099
+  },
+  {
+    "system": "Triveni",
+    "question": "C1",
+    "answer": "**Owner:** Payments team (team:payments)  \n**On\u2011call engineer:** Arjun\u202fMehta (per:arjun-mehta)\n\n*Evidence:* owner_of shows the current owning team as **team:payments** and the current on\u2011call as **per:arjun-mehta** (source docs\u202fdoc:service\u2011catalog, doc:oncall\u2011schedule)\u3010owner_of\u3011  \n\nENTITIES: team:payments, per:arjun-mehta",
+    "predicted": [
+      "per:arjun-mehta",
+      "team:payments"
+    ],
+    "expected": [
+      "per:arjun-mehta",
+      "team:payments"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 13.8,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "owner_of"
+    ],
+    "error": "",
+    "tokens": 5362
+  },
+  {
+    "system": "Flat baseline",
+    "question": "C1",
+    "answer": "Payments\u2011api is owned by **Team Payments**\u3010doc:service-catalog\u3011, and the current on\u2011call engineer for payments\u2011api is **Arjun Mehta**\u3010doc:oncall-schedule\u3011.  \n\nENTITIES: Team Payments, Arjun Mehta",
+    "predicted": [
+      "per:arjun-mehta",
+      "team:payments"
+    ],
+    "expected": [
+      "per:arjun-mehta",
+      "team:payments"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 2.2,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 1328
+  },
+  {
+    "system": "Triveni",
+    "question": "C2",
+    "answer": "**Current governing decision:**\u202fADR\u202f019\u202f(Freeze retry policy on\u202forders\u2011api)\u202f[adr:019]  \n**Earlier decision it replaced:**\u202fADR\u202f007\u202f(Client\u2011side retries on\u202forders\u2011api)\u202f[adr:007]\n\n*ADR\u202f019 supersedes ADR\u202f007, as shown in the decision trail for\u202fsvc:orders\u2011api*\u202f[adr:019, adr:007].\n\nENTITIES: adr:019, adr:007",
+    "predicted": [
+      "adr:007",
+      "adr:019"
+    ],
+    "expected": [
+      "adr:007",
+      "adr:019"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 6.6,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "decision_trail"
+    ],
+    "error": "",
+    "tokens": 5619
+  },
+  {
+    "system": "Flat baseline",
+    "question": "C2",
+    "answer": "The current governing decision for\u202forders\u2011api\u202fis **ADR\u2011019** (which freezes the retry policy at two attempts) and it supersedes the earlier **ADR\u2011007** (which allowed up to five retry attempts)\u3010doc:adr-019\u3011\u3010doc:adr-007\u3011.\n\nENTITIES: adr:019, adr:007",
+    "predicted": [
+      "adr:007",
+      "adr:019"
+    ],
+    "expected": [
+      "adr:007",
+      "adr:019"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 1.1,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 918
+  },
+  {
+    "system": "Triveni",
+    "question": "C3",
+    "answer": "The two engineers whose departure would sever key knowledge bridges between teams are **Priya\u202fNair** (per:priya-nair) and **Dev\u202fMalhotra** (per:dev-malhotra).\n\nENTITIES: per:priya-nair, per:dev-malhotra",
+    "predicted": [
+      "per:dev-malhotra",
+      "per:priya-nair"
+    ],
+    "expected": [
+      "per:dev-malhotra",
+      "per:priya-nair"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 3.9,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "key_people"
+    ],
+    "error": "",
+    "tokens": 5487
+  },
+  {
+    "system": "Flat baseline",
+    "question": "C3",
+    "answer": "The provided documents do not contain any information about engineers or knowledge\u2011link dependencies between teams.\n\nENTITIES:",
+    "predicted": [],
+    "expected": [
+      "per:dev-malhotra",
+      "per:priya-nair"
+    ],
+    "correct": false,
+    "f1": 0.0,
+    "evidence": false,
+    "seconds": 5.0,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 747
+  },
+  {
+    "system": "Triveni",
+    "question": "C4",
+    "answer": "**Current owner:** Atlas (team:atlas)\u202f\u2014\u202f[doc:chat-billing-move]  \n**Previous owner:** Ledger (team:ledger)\u202f\u2014\u202fownership ended 2026\u201110\u201116\u202f[doc:service-catalog]\n\nENTITIES: team:atlas, team:ledger",
+    "predicted": [
+      "team:atlas",
+      "team:ledger"
+    ],
+    "expected": [
+      "team:atlas",
+      "team:ledger"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 3.6,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "owner_of"
+    ],
+    "error": "",
+    "tokens": 5539
+  },
+  {
+    "system": "Flat baseline",
+    "question": "C4",
+    "answer": "Billing\u2011batch is now owned by **Team Atlas**\u3010doc:chat-billing-move\u3011.  \nBefore the move, it was owned by **Team Ledger**\u3010doc:service-catalog\u3011.\n\nENTITIES: Team Atlas, Team Ledger",
+    "predicted": [
+      "team:atlas",
+      "team:ledger"
+    ],
+    "expected": [
+      "team:atlas",
+      "team:ledger"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 1.3,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 1070
+  },
+  {
+    "system": "Triveni",
+    "question": "C5",
+    "answer": "The only runbook flagged as stale for the services currently owned by Team\u202fAtlas is **doc:rb-billing-rerun** (the \u201cRunbook: rerunning billing\u2011batch\u201d, which still cites ADR\u202f011 that has been superseded by ADR\u202f023)\u3010team_services\u3011.\n\nENTITIES: doc:rb-billing-rerun",
+    "predicted": [
+      "doc:rb-billing-rerun"
+    ],
+    "expected": [
+      "doc:rb-billing-rerun"
+    ],
+    "correct": true,
+    "f1": 1.0,
+    "evidence": true,
+    "seconds": 11.7,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [
+      "team_services"
+    ],
+    "error": "",
+    "tokens": 5667
+  },
+  {
+    "system": "Flat baseline",
+    "question": "C5",
+    "answer": "The provided documents do not contain information about which runbooks are out of date for the services that Team\u202fAtlas now owns.\n\nENTITIES:",
+    "predicted": [],
+    "expected": [
+      "doc:rb-billing-rerun"
+    ],
+    "correct": false,
+    "f1": 0.0,
+    "evidence": false,
+    "seconds": 1.1,
+    "model": "groq:openai/gpt-oss-120b",
+    "tools": [],
+    "error": "",
+    "tokens": 1073
+  }
+]

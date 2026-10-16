@@ -161,18 +161,30 @@ async def triveni(q: Q, ctx: dict) -> tuple[str, bool, str, list[str], int]:
     return r.answer, evidence, model, [s.tool for s in r.steps], r.tokens
 
 
+CHUNK_CHARS = 400  # flat RAG retrieves passages, not whole documents (long registry lists would be diluted)
+
+
 class FlatBaseline:
-    """TF-IDF retrieval over every Document in the tenant (title + text), top 5, then the same model. No graph."""
+    """TF-IDF over passages of every Document in the tenant (title + up to ~400 chars of lines), top 8, then the
+    same model. No graph, no memory. Chunking keeps long documents (service catalog, deploy log) retrievable."""
 
     def __init__(self):
         from sklearn.feature_extraction.text import TfidfVectorizer
 
         rows = get_graph(TENANT).ro_query("MATCH (d:Document) RETURN d.id, d.title, d.text ORDER BY d.id").result_set
-        self.docs = [(i, t or "", x or "") for i, t, x in rows]
+        self.docs = []  # passages: (doc id, title, passage text)
+        for doc_id, title, text in rows:
+            chunk = ""
+            for line in (text or "").splitlines():
+                if chunk and len(chunk) + len(line) > CHUNK_CHARS:
+                    self.docs.append((doc_id, title or "", chunk))
+                    chunk = ""
+                chunk += line + "\n"
+            self.docs.append((doc_id, title or "", chunk))
         self.vec = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), sublinear_tf=True)
         self.matrix = self.vec.fit_transform([f"{t}\n{x}" for _, t, x in self.docs])
 
-    def retrieve(self, question: str, k: int = 5) -> list[tuple[str, str, str]]:
+    def retrieve(self, question: str, k: int = 8) -> list[tuple[str, str, str]]:
         scores = (self.matrix @ self.vec.transform([question]).T).toarray().ravel()
         return [self.docs[i] for i in scores.argsort()[::-1][:k]]
 
@@ -196,6 +208,19 @@ class FlatBaseline:
         raise QuotaExhausted("no model available for the baseline: " + ", ".join(errors))
 
 
+def question_entities(text: str, names: dict[str, str]) -> set[str]:
+    """Entities the question itself names (e.g. "orders-api" in "retry policy on orders-api")."""
+    low = text.lower()
+    return {i for n, i in names.items() if len(n) > 3 and re.search(rf"(?<![\w-]){re.escape(n)}(?![\w-])", low)}
+
+
+def is_correct(predicted: set[str], expected: set[str], asked: set[str], answer: str, must: str) -> bool:
+    """All expected entities present; anything extra must be an entity the question named (restating the subject
+    is not a wrong answer); plus the `must` pattern if the question has one. The same rule scores both systems."""
+    return (expected <= predicted and (predicted - expected) <= asked
+            and (not must or bool(re.search(must, answer, re.I))))
+
+
 def score(system: str, q: Q, ctx: dict, names: dict, fn) -> Answer:
     expected = set(ctx[q.gt])
     t0 = time.perf_counter()
@@ -210,7 +235,7 @@ def score(system: str, q: Q, ctx: dict, names: dict, fn) -> Answer:
     predicted = entities(text, names)
     hit = len(predicted & expected)
     f1 = 0.0 if not hit else 2 * hit / (len(predicted) + len(expected))
-    correct = predicted == expected and (not q.must or bool(re.search(q.must, text, re.I)))
+    correct = is_correct(predicted, expected, question_entities(q.text, names), text, q.must)
     return Answer(system, q.id, text, sorted(predicted), sorted(expected), correct, round(f1, 2), evidence,
                   round(seconds, 1), model, tools, error, tokens)
 
@@ -218,16 +243,22 @@ def score(system: str, q: Q, ctx: dict, names: dict, fn) -> Answer:
 # --------------------------------------------------------------------------- report
 def report(results: list[Answer], started: str, incomplete: str = "") -> str:
     by = {(r.system, r.question): r for r in results}
+    models = sorted({r.model.split(" (")[0] for r in results if r.model})
     lines = ["# Eval: Triveni vs flat baseline", "",
-             f"Run {started} with `python -m backend.scripts.eval`. 15 questions (5 per track, notes/eval-questions.md), "
-             "scored by **exact match** on the entity set in each answer's `ENTITIES:` line, normalised to graph ids. "
-             "Ground truth comes from the seed generator. Both systems use the same model chain "
-             f"({' -> '.join(provider_order(include_rules=False))}); one run, so expect some run-to-run noise.", "",
+             f"Run {started} with `python -m backend.scripts.eval`. 15 questions, 5 per track (notes/eval-questions.md). "
+             "Ground truth comes from the seed generator, never from either system. Both systems use the **same model**: "
+             f"{', '.join(models) or 'n/a'}. One run, so expect some run-to-run noise.", "",
+             "- **Triveni:** the triage agent choosing graph tools over MCP, with memory (episodes, conversation history).",
+             f"- **Flat baseline:** TF-IDF over passages (~{CHUNK_CHARS} chars) of the same tenant's documents, top 8, then the "
+             "same model. No graph, no memory. It sees the same documents Triveni ingested, including the Scenario 7 chat.", "",
+             "**Scoring:** each answer ends with an `ENTITIES:` line, normalised to graph ids. An answer is correct when it "
+             "contains every expected entity and its only extras are entities the question itself names (restating the "
+             "subject, e.g. `svc:orders-api` in \"retry policy on orders-api\", is not a wrong answer). The same rule scores "
+             "both systems. Mean F1 is shown for partial credit. Evidence = the answer is backed by tool provenance "
+             "(Triveni) or cites a retrieved document (baseline).", "",
              *([f"> **Incomplete run:** {incomplete}. Free-tier model quotas ran out; the rows below are the questions that "
                 "were answered. Re-run when the quota resets.", ""] if incomplete else []),
-             "- **Triveni:** the triage agent choosing graph tools over MCP, with memory (episodes, conversation history).",
-             "- **Flat baseline:** TF-IDF over the same tenant's documents (top 5), then the same model. No graph, no memory.", "",
-             "| Track | System | Exact match | Mean F1 | Answers with evidence | Median latency | Tokens / answer |",
+             "| Track | System | Correct | Mean F1 | Answers with evidence | Median latency | Tokens / answer |",
              "|---|---|---|---|---|---|---|"]
     for track, name in (("01", "Act"), ("02", "Remember & Coordinate"), ("03", "Company Brain")):
         for system in ("Triveni", "Flat baseline"):
@@ -245,18 +276,48 @@ def report(results: list[Answer], started: str, incomplete: str = "") -> str:
             continue
         cell = lambda r: ("✅ " if r.correct else "❌ ") + (", ".join(r.predicted) or "(none)") + (f" _{r.error[:60]}_" if r.error else "")
         lines.append(f"| {q.id}: {q.text} | {', '.join(t.expected)} | {cell(t)} | {cell(b)} | {', '.join(t.tools)} |")
-    lines += ["", "Models used: " + "; ".join(sorted({f"{r.system}: {r.model}" for r in results if r.model})), ""]
+    lines += ["", "Models used: " + "; ".join(sorted({f"{r.system}: {r.model}" for r in results if r.model})), "",
+              "Notes: B5 is answered from the conversation history the agent loads from the graph, so it has no tool step "
+              "(hence Triveni's 80% evidence on Track 02). C1 is a control question the flat baseline is expected to answer "
+              "(both owner and on-call are stated in registry documents).", ""]
     return "\n".join(lines)
+
+
+RESULTS = Path("eval/results.json")
+
+
+def rescore(out: str) -> None:
+    """Apply the current scoring rule to stored answers (no model calls). Needs only the seed's names."""
+    seed.load(TENANT, seed.generate("acme", 42))
+    names = catalog()
+    get_graph(TENANT).delete()
+    by_id = {q.id: q for q in QUESTIONS}
+    results = []
+    for r in (Answer(**x) for x in json.loads(RESULTS.read_text(encoding="utf-8"))):
+        q = by_id[r.question]
+        pred, exp = set(r.predicted), set(r.expected)
+        r.correct = is_correct(pred, exp, question_entities(q.text, names), r.answer, q.must)
+        results.append(r)
+    RESULTS.write_text(json.dumps([asdict(r) for r in results], indent=2), encoding="utf-8")
+    md = report(results, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC") + " (re-scored)")
+    Path(out).write_text(md, encoding="utf-8")
+    print(md)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Triveni per-track eval")
     ap.add_argument("--out", default="docs/eval.md")
     ap.add_argument("--only", help="comma-separated question ids, e.g. A1,C5")
+    ap.add_argument("--systems", default="triveni,baseline", help="which systems to run (others are kept from eval/results.json)")
+    ap.add_argument("--rescore", action="store_true", help="re-score eval/results.json with the current rule; no model calls")
     ap.add_argument("--pause", type=float, default=float(os.getenv("TRIVENI_EVAL_PAUSE", "20")),
                     help="seconds between model calls (free tiers limit tokens per minute)")
     args = ap.parse_args()
     started = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    if args.rescore:
+        return rescore(args.out)
+    run_systems = {"triveni": "Triveni", "baseline": "Flat baseline"}
+    run_systems = {run_systems[x.strip()] for x in args.systems.split(",")}
     ctx = setup()
     names, baseline, ingested, results = catalog(), FlatBaseline(), False, []
     incomplete = ""
@@ -268,6 +329,8 @@ def main() -> None:
             ingest(TENANT, "data/raw/live/chat-billing-move.md")  # cached extraction; same doc goes into the baseline index
             names, baseline, ingested = catalog(), FlatBaseline(), True
         for system, fn in (("Triveni", lambda q=q: triveni(q, ctx)), ("Flat baseline", lambda q=q: baseline.answer(q))):
+            if system not in run_systems:
+                continue
             try:
                 r = score(system, q, ctx, names, fn)
             except QuotaExhausted as exc:
@@ -281,7 +344,10 @@ def main() -> None:
         if incomplete:
             break
     Path("eval").mkdir(exist_ok=True)
-    Path("eval/results.json").write_text(json.dumps([asdict(r) for r in results], indent=2), encoding="utf-8")
+    kept = [Answer(**r) for r in (json.loads(RESULTS.read_text(encoding="utf-8")) if RESULTS.exists() else [])
+            if r["system"] not in run_systems]
+    results = sorted(kept + results, key=lambda r: ([q.id for q in QUESTIONS].index(r.question), r.system != "Triveni"))
+    RESULTS.write_text(json.dumps([asdict(r) for r in results], indent=2), encoding="utf-8")
     md = report(results, started, incomplete)
     Path(args.out).write_text(md, encoding="utf-8")
     print(md)

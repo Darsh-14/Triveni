@@ -40,3 +40,12 @@ def test_team_services_with_stale_runbooks(loaded):
     assert "svc:billing-batch" in [s["id"] for s in r.data["services"]]
     assert r.data["stale_runbooks"] == ["doc:rb-billing-rerun"]  # cites adr:011, superseded by adr:023
     assert run_tool("test_acme", "team_services", {"team": "team:atlas"}).data["stale_runbooks"] == []  # before the move
+
+
+def test_scoring_rule_allows_only_restated_question_entities():
+    expected, asked = {"adr:019"}, {"svc:orders-api"}
+    assert ev.is_correct({"adr:019"}, expected, asked, "No, blocked", r"\bno\b")
+    assert ev.is_correct({"adr:019", "svc:orders-api"}, expected, asked, "No, blocked", r"\bno\b")  # restates the subject
+    assert not ev.is_correct({"adr:019", "svc:payments-api"}, expected, asked, "No", "")  # a real extra is wrong
+    assert not ev.is_correct({"svc:orders-api"}, expected, asked, "No", "")  # missing the answer is wrong
+    assert not ev.is_correct({"adr:019"}, expected, asked, "Yes, go ahead", r"\b(no|not|blocked)\b")  # must-pattern
