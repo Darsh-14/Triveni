@@ -3,6 +3,7 @@
     python -m backend.app.agents.triage "payments-api is failing, what's affected and who do I page?" --tenant acme
 """
 import argparse
+import sys
 
 import anyio
 from dotenv import load_dotenv
@@ -27,6 +28,7 @@ Answer format:
 
 def main() -> None:
     load_dotenv()
+    sys.stdout.reconfigure(encoding="utf-8")  # answers contain arrows/emoji; Windows consoles default to cp1252
     ap = argparse.ArgumentParser(description="Ask the Triveni triage agent")
     ap.add_argument("question")
     ap.add_argument("--tenant", default="acme")

@@ -1,0 +1,41 @@
+{
+  "entities": [
+    {
+      "ref": "svc:fraud-scorer",
+      "label": "Service",
+      "name": "fraud-scorer",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "svc:feature-flags",
+      "label": "Service",
+      "name": "feature-flags",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "team:payments",
+      "label": "Team",
+      "name": "Payments",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    }
+  ],
+  "facts": [
+    {
+      "type": "DEPENDS_ON",
+      "src": "svc:fraud-scorer",
+      "dst": "svc:feature-flags",
+      "ends": false,
+      "evidence": "fraud-scorer now depends on feature-flags: the new scoring model is rolled out behind a flag, so fraud-scorer calls feature-flags on every request."
+    }
+  ],
+  "_model": "groq:qwen/qwen3.8-27b"
+}

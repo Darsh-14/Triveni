@@ -1,0 +1,32 @@
+{
+  "entities": [
+    {
+      "ref": "per:kavya-rao",
+      "label": "Person",
+      "name": "Kavya Rao",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "svc:invoice-svc",
+      "label": "Service",
+      "name": "invoice-svc",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    }
+  ],
+  "facts": [
+    {
+      "type": "ON_CALL_FOR",
+      "src": "per:kavya-rao",
+      "dst": "svc:invoice-svc",
+      "ends": false,
+      "evidence": "I'm taking over on-call for invoice-svc starting today."
+    }
+  ],
+  "_model": "groq:qwen/qwen3.8-27b"
+}

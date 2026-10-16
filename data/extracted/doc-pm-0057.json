@@ -1,0 +1,73 @@
+{
+  "entities": [
+    {
+      "ref": "per:vikram-shah",
+      "label": "Person",
+      "name": "Vikram Shah",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "inc:0057",
+      "label": "Incident",
+      "name": "orders-api p99 latency spike",
+      "role": null,
+      "severity": null,
+      "summary": "orders-api p99 latency above 4s on Oct 15 due to undersized worker pool.",
+      "forbids": []
+    },
+    {
+      "ref": "svc:orders-api",
+      "label": "Service",
+      "name": "orders-api",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "svc:payments-api",
+      "label": "Service",
+      "name": "payments-api",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "adr:019",
+      "label": "Decision",
+      "name": "ADR-019: Freeze retry policy on orders-api",
+      "role": null,
+      "severity": null,
+      "summary": "Freeze retry policy on orders-api to prevent retry storms.",
+      "forbids": []
+    }
+  ],
+  "facts": [
+    {
+      "type": "RESOLVED",
+      "src": "per:vikram-shah",
+      "dst": "inc:0057",
+      "ends": false,
+      "evidence": "Vikram Shah resolved the incident at 12:40 UTC by scaling the orders-api worker pool from 8 to 20 workers."
+    },
+    {
+      "type": "AFFECTED",
+      "src": "inc:0057",
+      "dst": "svc:orders-api",
+      "ends": false,
+      "evidence": "Incident inc:0057, orders-api p99 latency above 4s on Oct 15."
+    },
+    {
+      "type": "GOVERNS",
+      "src": "adr:019",
+      "dst": "svc:orders-api",
+      "ends": false,
+      "evidence": "Retries stayed frozen at 2 attempts per ADR-019"
+    }
+  ],
+  "_model": "groq:qwen/qwen3.8-27b"
+}

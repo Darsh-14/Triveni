@@ -69,3 +69,5 @@ All data is synthetic, produced by a deterministic generator (`backend/scripts/s
 
 ## AI usage
 This project was built with AI assistance (Claude Code) for code generation and review. The team designed the graph model and can explain every query, the model, and the architecture.
+
+At runtime, the triage agent and document extraction use free-tier models through one provider interface: Groq (`qwen/qwen3.8-27b`) first, Gemini (`gemini-3.8-flash`) as fallback, and a no-model keyword planner (`rules`) as the last resort, so the demo cannot fail on a rate limit. Every tool call goes over MCP regardless of provider. Document extractions are cached in `data/extracted/`.

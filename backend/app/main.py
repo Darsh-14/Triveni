@@ -13,6 +13,7 @@ from backend.app.agents.loop import run_agent
 from backend.app.agents.triage import SYSTEM as TRIAGE_SYSTEM
 from backend.app.graph.client import ping
 from backend.app.graph.tenant import InvalidTenant, get_graph, graph_name, list_tenants
+from backend.app.llm.providers import provider_order
 from backend.app.tools import REGISTRY, run_tool
 
 load_dotenv()
@@ -37,8 +38,8 @@ def tenant_graph(tenant: str):
 # --------------------------------------------------------------------------- meta
 @app.get("/api/health")
 def health():
-    return {"falkordb": ping(), "agent": bool(os.getenv("ANTHROPIC_API_KEY")),
-            "model": os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5-5")}
+    providers = provider_order()  # e.g. ["groq", "gemini", "rules"]; rules (no model) is always last
+    return {"falkordb": ping(), "agent": True, "providers": providers, "model_backed": providers[0] != "rules"}
 
 
 @app.get("/api/tenants")
@@ -77,9 +78,7 @@ class Ask(BaseModel):
 @app.post("/api/ask")
 async def ask(body: Ask):
     tenant_graph(body.tenant)
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "The agent needs ANTHROPIC_API_KEY in .env. Tools can still be run directly.")
-    result = await run_agent(body.question, body.tenant, TRIAGE_SYSTEM)
+    result = await run_agent(body.question, body.tenant, TRIAGE_SYSTEM)  # falls back to rules mode if no model answers
     return result.to_dict()
 
 

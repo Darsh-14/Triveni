@@ -1,0 +1,66 @@
+{
+  "entities": [
+    {
+      "ref": "adr:041",
+      "label": "Decision",
+      "name": "ADR-041: Cap search-api query timeouts at 800 ms",
+      "role": null,
+      "severity": null,
+      "summary": "search-api and query-suggest must time out queries after 800 ms and return partial results.",
+      "forbids": [
+        "raise_timeout"
+      ]
+    },
+    {
+      "ref": "per:dev-malhotra",
+      "label": "Person",
+      "name": "Dev Malhotra",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "svc:search-api",
+      "label": "Service",
+      "name": "search-api",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "svc:query-suggest",
+      "label": "Service",
+      "name": "query-suggest",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    }
+  ],
+  "facts": [
+    {
+      "type": "MADE",
+      "src": "per:dev-malhotra",
+      "dst": "adr:041",
+      "ends": false,
+      "evidence": "Decision ADR-041, made by Dev Malhotra, status accepted."
+    },
+    {
+      "type": "GOVERNS",
+      "src": "adr:041",
+      "dst": "svc:search-api",
+      "ends": false,
+      "evidence": "search-api and query-suggest must time out queries after 800 ms and return partial results."
+    },
+    {
+      "type": "GOVERNS",
+      "src": "adr:041",
+      "dst": "svc:query-suggest",
+      "ends": false,
+      "evidence": "search-api and query-suggest must time out queries after 800 ms and return partial results."
+    }
+  ],
+  "_model": "groq:qwen/qwen3.8-27b"
+}

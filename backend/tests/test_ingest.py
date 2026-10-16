@@ -172,10 +172,35 @@ def test_ingest_tool_only_reads_data_raw(graph):
         run_tool(TENANT, "ingest_document", {"path": "data/raw/../../.env"})
 
 
+def test_openai_compat_extraction_validates_and_retries():
+    import anyio
+
+    from backend.app.ingest.extract import _extract_openai_compat
+
+    good = billing_move().model_dump_json()
+
+    class Fake:
+        def __init__(self):
+            self.calls = []
+
+        async def json(self, system, user):
+            self.calls.append(user)
+            return ('{"entities": [{"label": "Planet"}]}' if len(self.calls) == 1 else good), "groq:fake"
+
+    fake = Fake()
+    extraction, model = anyio.run(_extract_openai_compat, fake, read_document(BILLING_MOVE), "Team team:atlas Atlas")
+    assert model == "groq:fake" and len(fake.calls) == 2 and "previous JSON was invalid" in fake.calls[1]
+    assert {(f.type, f.src) for f in extraction.facts} == {("OWNS", "team:atlas"), ("ON_CALL_FOR", "per:farhan-qureshi")}
+
+
 # ---------------------------------------------------------------- live model (optional)
-@pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY not set")
-def test_live_extraction_of_billing_move(graph):
+@pytest.mark.skipif(not (os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("ANTHROPIC_API_KEY")),
+                    reason="no model key set")
+def test_live_extraction_of_billing_move(graph, tmp_path, monkeypatch):
+    from backend.app.ingest import extract as extract_module
     from backend.app.ingest.extract import extract
+
+    monkeypatch.setattr(extract_module, "CACHE_DIR", tmp_path)  # never overwrite the committed demo cache
 
     extraction, origin = extract(read_document(BILLING_MOVE), graph, refresh=True)
     facts = {(f.type, f.src, f.dst) for f in extraction.facts}

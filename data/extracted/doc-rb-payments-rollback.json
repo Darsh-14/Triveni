@@ -1,0 +1,48 @@
+{
+  "entities": [
+    {
+      "ref": "svc:payments-api",
+      "label": "Service",
+      "name": "payments-api",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "team:payments",
+      "label": "Team",
+      "name": "Payments",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "per:arjun-mehta",
+      "label": "Person",
+      "name": "Arjun Mehta",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    }
+  ],
+  "facts": [
+    {
+      "type": "OWNS",
+      "src": "team:payments",
+      "dst": "svc:payments-api",
+      "ends": false,
+      "evidence": "payments-api is owned by Team Payments."
+    },
+    {
+      "type": "ON_CALL_FOR",
+      "src": "per:arjun-mehta",
+      "dst": "svc:payments-api",
+      "ends": false,
+      "evidence": "Arjun Mehta is on call for payments-api."
+    }
+  ],
+  "_model": "groq:qwen/qwen3.8-27b"
+}

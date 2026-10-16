@@ -1,9 +1,12 @@
-"""Agent loop: Claude chooses Triveni tools over MCP (Track 01).
+"""Agent loop: a model chooses Triveni tools over MCP (Track 01).
 
 The agent never imports the tools. It starts the MCP server for one tenant, lists the tools the
 server offers, and every call goes through the MCP session. Each step is recorded (which tool,
-with what input, the model's progress note on why, and the tool's provenance), which gives the
-plan display and the evidence the final answer must cite.
+with what input, the model's note on why, and the tool's provenance), which gives the plan
+display and the evidence the final answer must cite.
+
+Providers are tried in order (TRIVENI_LLM_PROVIDERS, default groq -> gemini -> anthropic -> rules).
+If one is rate-limited or unreachable, the run restarts on the next and the switch is recorded.
 """
 import json
 import os
@@ -12,15 +15,12 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-import anthropic
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from backend.app.llm.providers import ProviderUnavailable, make, provider_order
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
-BETAS = [
-    "server-side-fallback-2026-07-01",  # fallbacks="default": re-run on a fallback model if a classifier declines
-    "thinking-display-updates-2026-08-18",  # progress notes between tool calls -> the "why" of each step
-]
 
 
 @dataclass
@@ -46,7 +46,7 @@ class AgentResult:
     answer: str
     steps: list[Step] = field(default_factory=list)
     model: str = ""
-    stop_reason: str = ""
+    fallbacks: list[str] = field(default_factory=list)  # providers that failed before this answer
 
     @property
     def tracks(self) -> list[str]:
@@ -65,68 +65,64 @@ def server_params(tenant: str) -> StdioServerParameters:
                                  cwd=str(REPO_ROOT), env=dict(os.environ))
 
 
-def mcp_tools_for_claude(tools) -> list[dict]:
-    """MCP tool listing -> Anthropic tool definitions (name, description, JSON schema), sorted for cache stability."""
+def mcp_tools(tools) -> list[dict]:
+    """MCP tool listing -> neutral tool definitions (name, description, JSON schema), sorted for stable prompts."""
     return [{"name": t.name, "description": t.description or "", "input_schema": t.input_schema}
             for t in sorted(tools, key=lambda t: t.name)]
 
 
-def _progress_note(content) -> str:
-    """Text the model wrote before its tool calls: progress-update thinking blocks, or plain text blocks."""
-    notes = [getattr(b, "thinking", "") or "" for b in content if b.type == "thinking"]
-    notes += [b.text for b in content if b.type == "text"]
-    return " ".join(n.strip() for n in notes if n and n.strip())
+async def _run_with(provider, session, tools, question, tenant, system, history, max_turns) -> AgentResult:
+    result = AgentResult(question=question, tenant=tenant, answer="", model=provider.name)
+    messages = list(history or []) + [provider.user(question)]
+    for _ in range(max_turns):
+        turn = await provider.turn(system, messages, tools)
+        result.model = turn.model or result.model
+        messages.append(turn.assistant_message or {"role": "assistant", "content": turn.text})
+        if not turn.calls:
+            result.answer = turn.text
+            return result
+        outputs = []
+        for call in turn.calls:  # results of one turn go back together
+            if call.args is None:
+                text, is_error, sc, ms = f"Invalid JSON arguments: {call.raw_args[:200]}", True, {}, 0
+            else:
+                t0 = time.perf_counter()
+                res = await session.call_tool(call.name, call.args)
+                ms = int((time.perf_counter() - t0) * 1000)
+                is_error, sc = bool(res.is_error), res.structured_content or {}
+                text = res.content[0].text if res.content else ""
+                if sc and not is_error:
+                    # The model gets the answer and its sources; the UI keeps the full provenance (cypher,
+                    # params, paths) from structured_content. Smaller prompts: faster, fewer rate limits.
+                    text = json.dumps({k: sc.get(k) for k in ("explanation", "data", "sources")}, default=str)
+            result.steps.append(Step(
+                tool=call.name, input=call.args or {}, why=turn.text, ok=not is_error,
+                explanation=sc.get("explanation", text if is_error else ""), tracks=sc.get("tracks", []),
+                sources=sc.get("sources", []), cypher=sc.get("cypher", ""), params=sc.get("params", {}),
+                paths=sc.get("paths", []), ms=ms))
+            outputs.append((call, text, is_error))
+        messages.extend(provider.tool_results(outputs))
+    result.answer = "Stopped: too many tool rounds without a final answer."
+    return result
 
 
 async def run_agent(question: str, tenant: str, system: str, history: list | None = None,
-                    client=None, max_turns: int = 10) -> AgentResult:
-    client = client or anthropic.AsyncAnthropic()
-    model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5-5")
-    messages = list(history or []) + [{"role": "user", "content": question}]
-    result = AgentResult(question=question, tenant=tenant, answer="")
-
+                    providers: list | None = None, max_turns: int = 10) -> AgentResult:
+    providers = providers if providers is not None else [make(n) for n in provider_order()]
+    failed: list[str] = []
     async with stdio_client(server_params(tenant)) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            tools = mcp_tools_for_claude((await session.list_tools()).tools)
-
-            for _ in range(max_turns):
-                response = await client.beta.messages.create(
-                    model=model, max_tokens=16000, betas=BETAS, fallbacks="default",
-                    thinking={"type": "adaptive", "display": "updates"},
-                    output_config={"effort": "medium"},  # multistep tool use: medium is the recommended start
-                    system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-                    tools=tools, messages=messages,
-                )
-                result.model, result.stop_reason = response.model, response.stop_reason
-                if response.stop_reason == "refusal":
-                    result.answer = "The request was declined by a safety classifier."
-                    return result
-                messages.append({"role": "assistant", "content": response.content})  # full content, thinking included
-                calls = [b for b in response.content if b.type == "tool_use"]
-                if not calls:
-                    result.answer = "\n".join(b.text for b in response.content if b.type == "text").strip()
-                    return result
-
-                why = _progress_note(response.content)
-                tool_results = []
-                for call in calls:  # all results go back in one user message
-                    t0 = time.perf_counter()
-                    res = await session.call_tool(call.name, call.input)
-                    ms = int((time.perf_counter() - t0) * 1000)
-                    text = res.content[0].text if res.content else ""
-                    sc = res.structured_content or {}
-                    result.steps.append(Step(
-                        tool=call.name, input=call.input, why=why, ok=not res.is_error,
-                        explanation=sc.get("explanation", text if res.is_error else ""),
-                        tracks=sc.get("tracks", []), sources=sc.get("sources", []), cypher=sc.get("cypher", ""),
-                        params=sc.get("params", {}), paths=sc.get("paths", []), ms=ms))
-                    tool_results.append({"type": "tool_result", "tool_use_id": call.id, "content": text,
-                                         **({"is_error": True} if res.is_error else {})})
-                messages.append({"role": "user", "content": tool_results})
-
-    result.answer = result.answer or "Stopped: too many tool rounds without a final answer."
-    return result
+            tools = mcp_tools((await session.list_tools()).tools)
+            for provider in providers:
+                try:
+                    result = await _run_with(provider, session, tools, question, tenant, system, history, max_turns)
+                except ProviderUnavailable as exc:
+                    failed.append(str(exc)[:300])
+                    continue
+                result.fallbacks = failed
+                return result
+    return AgentResult(question=question, tenant=tenant, answer="No provider could answer.", fallbacks=failed)
 
 
 def print_result(r: AgentResult) -> None:
@@ -137,3 +133,5 @@ def print_result(r: AgentResult) -> None:
             print(f"     why: {s.why[:160]}")
         print(f"     -> {s.explanation[:200]}")
     print(f"\n{r.answer}\n\nsources: {', '.join(r.sources) or '-'}   tracks: {', '.join(r.tracks)}   model: {r.model}")
+    if r.fallbacks:
+        print("fell back from: " + "; ".join(r.fallbacks))

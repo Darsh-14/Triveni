@@ -1,0 +1,48 @@
+{
+  "entities": [
+    {
+      "ref": "team:atlas",
+      "label": "Team",
+      "name": "Atlas",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "svc:billing-batch",
+      "label": "Service",
+      "name": "billing-batch",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "per:farhan-qureshi",
+      "label": "Person",
+      "name": "Farhan Qureshi",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    }
+  ],
+  "facts": [
+    {
+      "type": "OWNS",
+      "src": "team:atlas",
+      "dst": "svc:billing-batch",
+      "ends": false,
+      "evidence": "starting today, billing-batch moves from Team Ledger to Team Atlas."
+    },
+    {
+      "type": "ON_CALL_FOR",
+      "src": "per:farhan-qureshi",
+      "dst": "svc:billing-batch",
+      "ends": false,
+      "evidence": "I'll be on call for billing-batch until we set up a proper rotation."
+    }
+  ],
+  "_model": "gemini:gemini-3.8-flash"
+}

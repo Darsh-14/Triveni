@@ -23,8 +23,8 @@ When building any feature, state which track(s) it serves. Do not let one pillar
 
 ## Stack
 - Graph: FalkorDB (Docker locally: `docker run -p 6379:6379 -p 3000:3000 falkordb/falkordb:latest`; FalkorDB Cloud for deploy). Python client `falkordb`. Multigraph: one graph per tenant via `db.select_graph("tenant_<name>")`.
-- Backend: Python 3.11+, FastAPI, Pydantic, `anthropic` SDK for the agent, `mcp` Python SDK for the MCP server.
-- Model: configurable via `ANTHROPIC_MODEL` (default `claude-sonnet-5-5`). Keys from env only.
+- Backend: Python 3.11+, FastAPI, Pydantic, `mcp` Python SDK (2.x) for the MCP server.
+- Models (decided Oct 16: no paid key): provider chain `TRIVENI_LLM_PROVIDERS=groq,gemini,anthropic,rules` in `backend/app/llm/providers.py`. Groq (`qwen/qwen3.8-27b`) and Gemini (`gemini-3.8-flash`) free tiers via the `openai` SDK's OpenAI-compatible endpoints; Anthropic optional; `rules` = keyword planner with no model, always last. Gemini tool calls carry `extra_content.google.thought_signature` that must be echoed back. Extractions are cached in `data/extracted/` (committed) so ingestion replays without any key. Keys from env only.
 - Frontend: Next.js + TypeScript + Tailwind; graph canvas with Cytoscape.js (or react-force-graph). One framework only.
 - Eval: scikit-learn TF-IDF baseline, pytest. networkx (dev/test only) cross-checks algorithm ground truth.
 - Graph model details: notes/graph-model.md (edge categories, derived projections for algorithms, needles).

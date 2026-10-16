@@ -9,6 +9,9 @@ from mcp import ClientSession
 from mcp.client.stdio import stdio_client
 
 from backend.app.agents.loop import run_agent, server_params
+from backend.app.llm.providers import (
+    AnthropicProvider, OpenAICompatProvider, ProviderUnavailable, RulesProvider,
+)
 from backend.app.agents.triage import SYSTEM
 from backend.app.tools import REGISTRY, run_tool
 
@@ -83,7 +86,7 @@ def test_agent_selects_tools_over_mcp_and_cites_them(loaded):
             NS(type="text", text="Page per:arjun-mehta. Affected: svc:orders-api ... [doc:pm-0042]"),
         ]),
     ])
-    r = anyio.run(lambda: run_agent("payments-api is failing", "test_acme", SYSTEM, client=claude))
+    r = anyio.run(lambda: run_agent("payments-api is failing", "test_acme", SYSTEM, providers=[AnthropicProvider(client=claude)]))
 
     assert [s.tool for s in r.steps] == ["blast_radius", "similar_incidents"] and all(s.via == "mcp" for s in r.steps)
     assert r.steps[0].why.startswith("Check what depends")
@@ -103,13 +106,121 @@ def test_agent_passes_tool_errors_back_to_model(loaded):
         NS(model="scripted", stop_reason="tool_use", content=[_tool_use("t1", "blast_radius", {"service": "payments-api", "depth": 9})]),
         NS(model="scripted", stop_reason="end_turn", content=[NS(type="text", text="Retried with valid depth.")]),
     ])
-    r = anyio.run(lambda: run_agent("x", "test_acme", SYSTEM, client=claude))
+    r = anyio.run(lambda: run_agent("x", "test_acme", SYSTEM, providers=[AnthropicProvider(client=claude)]))
     assert r.steps[0].ok is False
     assert claude.requests[1]["messages"][-1]["content"][0]["is_error"] is True
 
 
-@pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY not set")
-def test_live_agent_scenario1(loaded, acme):
+# ---------------------------------------------------------------- OpenAI-compatible providers (Groq, Gemini)
+class ScriptedOpenAI:
+    """Stands in for AsyncOpenAI pointed at Groq/Gemini."""
+
+    def __init__(self, responses):
+        self.responses, self.requests = list(responses), []
+        self.chat = NS(completions=NS(create=self._create))
+
+    async def _create(self, **kwargs):
+        self.requests.append({**kwargs, "messages": list(kwargs["messages"])})
+        r = self.responses.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+
+def _oa(content="", calls=(), model="scripted-oa"):
+    tcs = [NS(id=i, type="function", function=NS(name=n, arguments=a),
+              extra_content={"google": {"thought_signature": f"sig-{i}"}}) for i, n, a in calls] or None
+    return NS(model=model, choices=[NS(message=NS(content=content, tool_calls=tcs))])
+
+
+def test_openai_compat_provider_over_mcp(loaded):
+    oa = ScriptedOpenAI([
+        _oa("Checking dependents first.", [("c1", "blast_radius", '{"service": "payments-api"}'),
+                                           ("c2", "owner_of", '{"service": "payments-api"}')]),
+        _oa("Page per:arjun-mehta [doc:oncall-schedule]."),
+    ])
+    r = anyio.run(lambda: run_agent("payments-api is failing", "test_acme", SYSTEM,
+                                    providers=[OpenAICompatProvider("groq", client=oa, model="test-model")]))
+    assert [s.tool for s in r.steps] == ["blast_radius", "owner_of"] and r.steps[0].why == "Checking dependents first."
+    assert r.model == "groq:scripted-oa" and r.answer.startswith("Page per:arjun-mehta")
+    first, second = oa.requests
+    assert first["messages"][0]["role"] == "system" and first["tool_choice"] == "auto"
+    assert {t["function"]["name"] for t in first["tools"]} == set(REGISTRY)
+    tool_msgs = [m for m in second["messages"] if m["role"] == "tool"]
+    assert [m["tool_call_id"] for m in tool_msgs] == ["c1", "c2"]
+    assert all("name" not in m for m in tool_msgs)  # Groq rejects messages[].name
+    echoed = second["messages"][-3]["tool_calls"][0]
+    assert echoed["function"].name == "blast_radius"
+    assert echoed["extra_content"] == {"google": {"thought_signature": "sig-c1"}}  # Gemini needs it back unchanged
+
+
+def test_invalid_tool_arguments_are_not_sent_to_mcp(loaded):
+    oa = ScriptedOpenAI([_oa("", [("c1", "blast_radius", '{"service": ')]), _oa("Sorry, retrying.")])
+    r = anyio.run(lambda: run_agent("x", "test_acme", SYSTEM,
+                                    providers=[OpenAICompatProvider("gemini", client=oa, model="m")]))
+    assert r.steps[0].ok is False and "Invalid JSON" in r.steps[0].explanation
+
+
+def test_falls_back_to_next_provider(loaded):
+    import httpx
+    import openai
+
+    limited = openai.RateLimitError("rate limited", body=None,
+                                    response=httpx.Response(429, request=httpx.Request("POST", "http://x")))
+    groq = OpenAICompatProvider("groq", client=ScriptedOpenAI([limited]), model="m")
+    gemini = OpenAICompatProvider("gemini", client=ScriptedOpenAI([_oa("Done via gemini.", model="g")]), model="m")
+    r = anyio.run(lambda: run_agent("hello", "test_acme", SYSTEM, providers=[groq, gemini]))
+    assert r.model == "gemini:g" and r.answer == "Done via gemini."
+    assert len(r.fallbacks) == 1 and r.fallbacks[0].startswith("groq: RateLimitError")
+
+
+class _Down:
+    name, model = "groq", "m"
+
+    def user(self, text):
+        return {"role": "user", "content": text}
+
+    async def turn(self, *args):
+        raise ProviderUnavailable("groq: down")
+
+
+def test_all_models_down_uses_rules(loaded):
+    r = anyio.run(lambda: run_agent("payments-api is failing, who do I page?", "test_acme", SYSTEM,
+                                    providers=[_Down(), RulesProvider()]))
+    assert r.model == "rules" and r.fallbacks == ["groq: down"]
+    assert [s.tool for s in r.steps] == ["blast_radius", "similar_incidents"] and all(s.via == "mcp" for s in r.steps)
+    assert r.answer.startswith("Rules mode") and "Page Arjun Mehta" in r.answer
+
+
+@pytest.mark.parametrize("question,plan", [
+    ("payments-api is failing, what's affected?", ["blast_radius", "similar_incidents"]),
+    ("Can we change the retry policy on orders-api?", ["decision_trail"]),
+    ("Who is on call for billing-batch?", ["why_not"]),
+    ("Who knows payments-api best?", ["who_knows"]),
+    ("Who owns billing-batch now?", ["owner_of"]),
+    ("How is per:priya-nair connected to svc:billing-batch?", ["shortest_path"]),
+    ("hello", []),
+])
+def test_rules_planner(question, plan):
+    assert [n for n, _ in RulesProvider.plan(question)] == plan
+
+
+def test_rules_retry_question_checks_the_action():
+    assert RulesProvider.plan("Can we change the retry policy on orders-api?")[0][1] == {
+        "service": "orders-api", "action": "change_retry_policy"}
+
+
+@pytest.mark.skipif(not (os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY")), reason="no GROQ/GEMINI key")
+def test_live_model_agent_scenario1(loaded):
     r = anyio.run(lambda: run_agent("payments-api is failing, what's affected and who do I page?", "test_acme", SYSTEM))
+    assert r.model != "rules", r.fallbacks
+    assert "blast_radius" in [s.tool for s in r.steps]
+    assert "arjun" in r.answer.lower()
+
+
+@pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY not set")
+def test_live_anthropic_agent_scenario1(loaded, acme):
+    r = anyio.run(lambda: run_agent("payments-api is failing, what's affected and who do I page?", "test_acme", SYSTEM,
+                                    providers=[AnthropicProvider()]))
     assert "blast_radius" in [s.tool for s in r.steps]
     assert "arjun" in r.answer.lower()

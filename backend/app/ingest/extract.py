@@ -116,38 +116,73 @@ def cache_path(doc_id: str) -> Path:
     return CACHE_DIR / (doc_id.replace(":", "-") + ".json")
 
 
+def _user_prompt(doc: RawDoc) -> str:
+    return (f"Document {doc.id} ({doc.kind}), written {doc.ts} by {doc.author or 'unknown'}.\n"
+            f"Title: {doc.title}\n\n{doc.text}")
+
+
+async def _extract_openai_compat(provider, doc: RawDoc, catalog_text: str) -> tuple[Extraction, str]:
+    """JSON mode + pydantic validation; one retry that shows the model its validation error."""
+    from pydantic import ValidationError
+
+    system = (SYSTEM + "\n\nReturn ONLY a JSON object that matches this JSON Schema:\n"
+              + json.dumps(Extraction.model_json_schema()) + "\n\nCatalog (label id name):\n" + catalog_text)
+    user = _user_prompt(doc)
+    for attempt in range(2):
+        text, model = await provider.json(system, user)
+        try:
+            return Extraction.model_validate_json(text), model
+        except ValidationError as err:
+            if attempt:
+                raise
+            user = _user_prompt(doc) + f"\n\nYour previous JSON was invalid: {err.errors()[:3]}. Return corrected JSON only."
+    raise AssertionError("unreachable")
+
+
+def _extract_anthropic(doc: RawDoc, catalog_text: str) -> tuple[Extraction, str]:
+    import anthropic
+
+    client = anthropic.Anthropic()
+    response = client.beta.messages.parse(
+        model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5-5"), max_tokens=16000,
+        betas=["server-side-fallback-2026-07-01"], fallbacks="default", output_config={"effort": "medium"},
+        system=[{"type": "text", "text": SYSTEM},
+                {"type": "text", "text": "Catalog (label id name):\n" + catalog_text, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": _user_prompt(doc)}],
+        output_format=Extraction,
+    )
+    if response.stop_reason == "refusal":
+        raise RuntimeError(f"extraction refused for {doc.id}")
+    return response.parsed_output, f"anthropic:{response.model}"
+
+
 def extract(doc: RawDoc, graph, refresh: bool = False) -> tuple[Extraction, str]:
-    """Return (extraction, origin) where origin is 'cache' or the model id."""
+    """Return (extraction, origin): origin is 'cache' or the provider:model that produced it.
+    Providers are tried in TRIVENI_LLM_PROVIDERS order; the first valid extraction wins and is cached."""
+    import anyio
+
+    from backend.app.llm.providers import ProviderUnavailable, make, provider_order
+
     path = cache_path(doc.id)
     if path.exists() and not refresh:
         return Extraction.model_validate_json(path.read_text(encoding="utf-8")), "cache"
     if os.getenv("DEMO_REPLAY") == "1":
         raise RuntimeError(f"DEMO_REPLAY=1 and no cached extraction for {doc.id}")
 
-    import anthropic
-
-    model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5-5")
-    client = anthropic.Anthropic()
-    response = client.beta.messages.parse(
-        model=model,
-        max_tokens=16000,
-        betas=["server-side-fallback-2026-07-01"],
-        fallbacks="default",  # re-run on a fallback model if a safety classifier declines
-        output_config={"effort": "medium"},
-        system=[
-            {"type": "text", "text": SYSTEM},
-            {"type": "text", "text": "Catalog (label id name):\n" + catalog(graph), "cache_control": {"type": "ephemeral"}},
-        ],
-        messages=[{
-            "role": "user",
-            "content": f"Document {doc.id} ({doc.kind}), written {doc.ts} by {doc.author or 'unknown'}.\n"
-                       f"Title: {doc.title}\n\n{doc.text}",
-        }],
-        output_format=Extraction,
-    )
-    if response.stop_reason == "refusal":
-        raise RuntimeError(f"extraction refused for {doc.id}: {response.stop_details}")
-    extraction = response.parsed_output
+    catalog_text = catalog(graph)
+    errors = []
+    for name in provider_order(include_rules=False):
+        try:
+            if name == "anthropic":
+                extraction, origin = _extract_anthropic(doc, catalog_text)
+            else:
+                extraction, origin = anyio.run(_extract_openai_compat, make(name), doc, catalog_text)
+            break
+        except (ProviderUnavailable, ValueError, RuntimeError) as exc:  # ValidationError is a ValueError
+            errors.append(f"{name}: {str(exc)[:200]}")
+    else:
+        raise RuntimeError("no model could extract " + doc.id + (": " + "; ".join(errors) if errors else
+                           " (set GROQ_API_KEY or GEMINI_API_KEY in .env)"))
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({**extraction.model_dump(), "_model": response.model}, indent=2) + "\n", encoding="utf-8")
-    return extraction, response.model
+    path.write_text(json.dumps({**extraction.model_dump(), "_model": origin}, indent=2) + "\n", encoding="utf-8")
+    return extraction, origin

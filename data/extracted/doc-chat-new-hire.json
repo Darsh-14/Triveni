@@ -1,0 +1,50 @@
+{
+  "entities": [
+    {
+      "ref": "per:dev-malhotra",
+      "label": "Person",
+      "name": "Dev Malhotra",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "ishita-rao",
+      "label": "Person",
+      "name": "Ishita Rao",
+      "role": "Backend Engineer",
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "team:search",
+      "label": "Team",
+      "name": "Search",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    },
+    {
+      "ref": "svc:query-suggest",
+      "label": "Service",
+      "name": "query-suggest",
+      "role": null,
+      "severity": null,
+      "summary": null,
+      "forbids": []
+    }
+  ],
+  "facts": [
+    {
+      "type": "MEMBER_OF",
+      "src": "ishita-rao",
+      "dst": "team:search",
+      "ends": false,
+      "evidence": "please welcome Ishita Rao, who joins Team Search today"
+    }
+  ],
+  "_model": "groq:qwen/qwen3.8-27b"
+}
