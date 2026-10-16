@@ -17,7 +17,7 @@ def test_scenario1_payments(loaded, acme):
                 svc=svc) == [[gt["owner_team"]]]
     assert rows(g, """MATCH (p:Person)-[:AUTHORED]->(d:Deployment)-[:DEPLOYED_TO]->(:Service {id: $svc})
                       RETURN d.id, p.id ORDER BY d.ts DESC LIMIT 1""", svc=svc) == [[gt["last_deploy"], gt["last_deploy_author"]]]
-    assert rows(g, """MATCH (doc:Document)-[:EVIDENCE_FOR]->(i:Incident)-[:CAUSED_BY]->(d:Deployment)
+    assert rows(g, """MATCH (doc:Document {kind: 'postmortem'})-[:EVIDENCE_FOR]->(i:Incident)-[:CAUSED_BY]->(d:Deployment)
                       -[:DEPLOYED_TO]->(:Service {id: $svc}) RETURN i.id, d.id, doc.id""",
                 svc=svc) == [[gt["prior_incident"], gt["prior_incident_cause"], gt["postmortem"]]]
 

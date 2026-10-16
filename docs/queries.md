@@ -2,6 +2,8 @@
 
 Every query Triveni runs, with the track it serves and where it lives. Values are always parameters (`$name`); only validated integers (traversal depth) are interpolated.
 
+**FalkorDB gotcha:** if a multi-hop pattern's middle node is not used after `MATCH`, the planner collapses the hops into one traversal and returns each endpoint pair once (`MATCH (p)-[:R]->(i)-[:S]->(s) RETURN p.id, s.id` gave 26 rows; `RETURN p.id, s.id, count(*)` summed to the true 34 paths). When multiplicity matters, aggregate with `count(*)` or return the middle node.
+
 Tags: **[01]** Act · **[02]** Remember & Coordinate · **[03]** Company Brain · **[F]** Foundation
 
 ## Foundation
@@ -27,11 +29,11 @@ CREATE (a)-[r:<REL>]->(b) SET r += row.props
 ```cypher
 MATCH ()-[r:KNOWS|KNOWN_BY|RESPONSIBLE_FOR]->() DELETE r
 -- expertise evidence (weight in brackets), summed per (person, service):
-MATCH (p:Person)-[:RESOLVED]->(:Incident)-[:AFFECTED]->(s:Service) RETURN p.id, s.id            -- [3]
-MATCH (p:Person)-[:AUTHORED]->(:Deployment)-[:DEPLOYED_TO]->(s:Service) RETURN p.id, s.id       -- [2]
-MATCH (p:Person)-[:MADE]->(:Decision)-[:GOVERNS]->(s:Service) RETURN p.id, s.id                 -- [2]
-MATCH (p:Person)-[:WROTE]->(:Document)-[:MENTIONS]->(s:Service) RETURN p.id, s.id               -- [1]
-MATCH (p:Person)-[r:ON_CALL_FOR]->(s:Service) WHERE r.valid_to IS NULL RETURN p.id, s.id        -- [1]
+MATCH (p:Person)-[:RESOLVED]->(i:Incident)-[:AFFECTED]->(s:Service) RETURN p.id, s.id, count(*)           -- [3]
+MATCH (p:Person)-[:AUTHORED]->(d:Deployment)-[:DEPLOYED_TO]->(s:Service) RETURN p.id, s.id, count(*)      -- [2]
+MATCH (p:Person)-[:MADE]->(dec:Decision)-[:GOVERNS]->(s:Service) RETURN p.id, s.id, count(*)             -- [2]
+MATCH (p:Person)-[:WROTE]->(doc:Document)-[:MENTIONS]->(s:Service) RETURN p.id, s.id, count(*)            -- [1]
+MATCH (p:Person)-[r:ON_CALL_FOR]->(s:Service) WHERE r.valid_to IS NULL RETURN p.id, s.id, count(*)        -- [1]
 UNWIND $rows AS row MATCH (p:Person {id: row.person}), (s:Service {id: row.service})
 CREATE (p)-[:KNOWS {weight: row.weight, derived: true}]->(s), (s)-[:KNOWN_BY {weight: row.weight, derived: true}]->(p)
 MATCH (t:Team)-[o:OWNS]->(s:Service) WHERE o.valid_to IS NULL CREATE (t)-[:RESPONSIBLE_FOR {derived: true}]->(s)

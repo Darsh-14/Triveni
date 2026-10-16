@@ -13,13 +13,15 @@ from collections import defaultdict
 
 from falkordb import Graph
 
-# Evidence that a person knows a service, with its weight. All paths end at a Service.
+# Evidence that a person knows a service, with its weight. Each query counts its own paths.
+# The count(*) matters: when the middle node is not used after MATCH, FalkorDB's planner collapses
+# the two hops into one traversal and returns each (p, s) pair once, losing repeated evidence.
 EXPERTISE_EVIDENCE = [
-    (3, "MATCH (p:Person)-[:RESOLVED]->(:Incident)-[:AFFECTED]->(s:Service) RETURN p.id, s.id"),
-    (2, "MATCH (p:Person)-[:AUTHORED]->(:Deployment)-[:DEPLOYED_TO]->(s:Service) RETURN p.id, s.id"),
-    (2, "MATCH (p:Person)-[:MADE]->(:Decision)-[:GOVERNS]->(s:Service) RETURN p.id, s.id"),
-    (1, "MATCH (p:Person)-[:WROTE]->(:Document)-[:MENTIONS]->(s:Service) RETURN p.id, s.id"),
-    (1, "MATCH (p:Person)-[r:ON_CALL_FOR]->(s:Service) WHERE r.valid_to IS NULL RETURN p.id, s.id"),
+    (3, "MATCH (p:Person)-[:RESOLVED]->(i:Incident)-[:AFFECTED]->(s:Service) RETURN p.id, s.id, count(*)"),
+    (2, "MATCH (p:Person)-[:AUTHORED]->(d:Deployment)-[:DEPLOYED_TO]->(s:Service) RETURN p.id, s.id, count(*)"),
+    (2, "MATCH (p:Person)-[:MADE]->(dec:Decision)-[:GOVERNS]->(s:Service) RETURN p.id, s.id, count(*)"),
+    (1, "MATCH (p:Person)-[:WROTE]->(doc:Document)-[:MENTIONS]->(s:Service) RETURN p.id, s.id, count(*)"),
+    (1, "MATCH (p:Person)-[r:ON_CALL_FOR]->(s:Service) WHERE r.valid_to IS NULL RETURN p.id, s.id, count(*)"),
 ]
 
 CLEAR = "MATCH ()-[r:KNOWS|KNOWN_BY|RESPONSIBLE_FOR]->() DELETE r"
@@ -43,8 +45,8 @@ def expertise_weights(graph: Graph) -> dict[tuple[str, str], int]:
     """(person id, service id) -> summed evidence weight, read from the current graph."""
     weights: dict[tuple[str, str], int] = defaultdict(int)
     for weight, query in EXPERTISE_EVIDENCE:
-        for person, service in graph.ro_query(query).result_set:
-            weights[(person, service)] += weight
+        for person, service, paths in graph.ro_query(query).result_set:
+            weights[(person, service)] += weight * paths
     return dict(weights)
 
 
@@ -57,5 +59,5 @@ def refresh_projections(graph: Graph) -> dict[str, int]:
         graph.query(WRITE_KNOWS, {"rows": rows})
     responsible = 0
     for query in WRITE_RESPONSIBLE:
-        responsible += graph.query(query).relationships_created
+        responsible += int(graph.query(query).relationships_created)
     return {"KNOWS": len(rows), "KNOWN_BY": len(rows), "RESPONSIBLE_FOR": responsible}

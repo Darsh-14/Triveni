@@ -87,6 +87,7 @@ Each tool result also carries `tracks: ["01","03"]` and `sources: [document ids]
 - Variable-length bounds cannot be parameters: validate depth against an allowed set (1–4) and interpolate the integer.
 - Dependency direction: `(A)-[:DEPENDS_ON]->(B)` means A needs B. Blast radius of B = nodes that reach B: `MATCH p=(d:Service)-[:DEPENDS_ON*1..3]->(s:Service {name:$svc}) RETURN p`.
 - Algorithm procedures: check docs.falkordb.com/algorithms for exact names and signatures before coding each one; wrap in a thin function with a test. Do not guess.
+- Path multiplicity: if a multi-hop pattern's middle node is not used after MATCH, FalkorDB's planner collapses the hops and returns each endpoint pair once. When counts matter, aggregate with `count(*)` or return the middle node (verified Oct 16).
 - Read tools run read-only queries. Writes happen only in `remember`, handoff and action code paths.
 
 ### Memory and coordination model (Track 02)
