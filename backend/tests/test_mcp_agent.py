@@ -235,6 +235,9 @@ def test_large_tool_results_are_cut_for_the_model():
     ("Which engineers are single points of knowledge?", ["key_people"]),
     ("Which services are orphaned?", ["find_orphans"]),
     ("What are our most critical services?", ["critical_services"]),
+    ("What happens to our knowledge coverage if Priya Nair leaves?", ["what_if"]),
+    ("What if Team Ledger is dissolved?", ["what_if"]),
+    ("What breaks if we decommission pdf-renderer-v1?", ["what_if"]),
     ("hello", []),
 ])
 def test_rules_planner(question, plan):

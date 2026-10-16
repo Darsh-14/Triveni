@@ -35,6 +35,14 @@ export interface Step {
   via: string;
 }
 
+export interface Verification {
+  verdict: "verified" | "partially_verified" | "unverified" | "no_citations";
+  cited: number;
+  grounded: string[];
+  unbacked: string[];
+  unknown: string[];
+}
+
 export interface Health {
   falkordb: boolean;
   agent: boolean;
@@ -51,6 +59,7 @@ export interface AgentResult {
   fallbacks: string[];
   conversation_id: string;
   episode: string;
+  verification: Verification;
   tracks: Track[];
   sources: string[];
 }

@@ -34,11 +34,12 @@ _TODO: diagram + node/edge tables._
 ## Track 01: Act on connected data
 | Key focus | Feature |
 |---|---|
+| What-if simulation | `what_if`: "what if Priya leaves / Team Ledger is dissolved / pdf-renderer-v1 is decommissioned": the graph is cloned with FalkorDB `GRAPH.COPY`, the change is applied to the clone, algorithms rerun, and the diff is returned (knowledge lost, new single points of knowledge, new orphans, dependents) |
 | Multi-hop reasoning | `blast_radius` (variable-length DEPENDS_ON, current edges only, with owners and on-call), `shortest_path` (dependency chains or any fact path, e.g. person → incident → service → service), `decision_trail` (SUPERSEDES chains) |
 | Graph queries and algorithms as agent tools | `critical_services` (`algo.pageRank` on DEPENDS_ON), `key_people` (`algo.betweenness` on the derived expertise graph: single points of knowledge), `find_orphans` (`algo.WCC` on the derived responsibility graph), all exposed over MCP and checked against independently computed ground truth |
 | Tool selection through MCP | `backend/app/mcp_server.py` exposes the whole registry over MCP, one server per tenant (the tenant is never a tool argument). The triage agent (`agents/triage.py`) lists tools over MCP and calls them over MCP; every step is logged with tool, input, the model's progress note (why) and timing |
 | Actions based on what the graph shows | `propose_action` → Action node; blocked with a BLOCKED_BY edge when a current governing Decision forbids it (e.g. `change_retry_policy` on orders-api blocked by ADR-019); otherwise a person approves or rejects in the UI and approved actions go to a simulated outbox |
-| Explainable results | Every MCP tool result carries `cypher`, `params`, `paths`, `sources`, `tracks` as structuredContent; the agent cites entity ids and source documents |
+| Explainable results | Every MCP tool result carries `cypher`, `params`, `paths`, `sources`, `tracks` as structuredContent; the agent cites entity ids and source documents; a **deterministic proof check** (code, not a model) marks each answer verified / partially verified / unverified by checking every cited id exists in the graph and came from a tool result |
 
 ## Track 02: Remember & coordinate
 | Key focus | Feature |

@@ -23,6 +23,7 @@ from backend.app.graph.tenant import get_graph
 from backend.app.llm.providers import ProviderUnavailable, make, provider_order
 from backend.app.memory.conversation import append_message, load_history, start_conversation
 from backend.app.memory.remember import remember
+from backend.app.agents.verify import evidence_ids, verify
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -54,6 +55,7 @@ class AgentResult:
     conversation_id: str = ""
     episode: str = ""  # memory written for this answer (by the model via `remember`, or automatically)
     tokens: int = 0   # model tokens used for this answer
+    verification: dict = field(default_factory=dict)  # deterministic proof check of the answer (verify.py)
 
     @property
     def tracks(self) -> list[str]:
@@ -64,7 +66,7 @@ class AgentResult:
         return sorted({src for s in self.steps for src in s.sources})
 
     def to_dict(self) -> dict:
-        return asdict(self) | {"tracks": self.tracks, "sources": self.sources}
+        return asdict(self) | {"tracks": self.tracks, "sources": self.sources}  # _evidence is not a field: not exported
 
 
 def server_params(tenant: str, agent: str = "agent:triage") -> StdioServerParameters:
@@ -82,6 +84,8 @@ def mcp_tools(tools) -> list[dict]:
 async def _run_with(provider, session, tools, question, tenant, system, history, max_turns) -> AgentResult:
     result = AgentResult(question=question, tenant=tenant, answer="", model=provider.name)
     messages = list(history or []) + [provider.user(question)]
+    # what the answer may cite: ids the user gave (question + earlier turns) and ids any tool returned this run
+    result._evidence = evidence_ids(question + " " + " ".join(str(m.get("content", "")) for m in history or []))
     for _ in range(max_turns):
         turn = await provider.turn(system, messages, tools)
         result.model = turn.model or result.model
@@ -99,6 +103,8 @@ async def _run_with(provider, session, tools, question, tenant, system, history,
                 res = await session.call_tool(call.name, call.args)
                 ms = int((time.perf_counter() - t0) * 1000)
                 is_error, sc = bool(res.is_error), res.structured_content or {}
+                if sc and not is_error:
+                    result._evidence |= evidence_ids(json.dumps(sc, default=str))
                 text = res.content[0].text if res.content else ""
                 if sc and not is_error:
                     text = for_model(sc)
@@ -188,6 +194,7 @@ async def run_agent(question: str, tenant: str, system: str, history: list | Non
             await close()
     result = result or AgentResult(question=question, tenant=tenant, answer="No provider could answer.")
     result.fallbacks = failed
+    result.verification = verify(get_graph(tenant), result.answer, getattr(result, "_evidence", set()))
     if persist:
         _persist(tenant, agent, user_id, conversation_id, result)
     return result
@@ -203,3 +210,8 @@ def print_result(r: AgentResult) -> None:
     print(f"\n{r.answer}\n\nsources: {', '.join(r.sources) or '-'}   tracks: {', '.join(r.tracks)}   model: {r.model}")
     if r.fallbacks:
         print("fell back from: " + "; ".join(r.fallbacks))
+    v = r.verification
+    if v:
+        print(f"proof check: {v['verdict']} ({len(v['grounded'])}/{v['cited']} cited ids grounded"
+              + (f"; unbacked {', '.join(v['unbacked'])}" if v["unbacked"] else "")
+              + (f"; UNKNOWN {', '.join(v['unknown'])}" if v["unknown"] else "") + ")")

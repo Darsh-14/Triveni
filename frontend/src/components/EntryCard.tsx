@@ -1,6 +1,6 @@
 "use client";
 
-import type { Step, Track } from "@/lib/api";
+import type { Step, Track, Verification } from "@/lib/api";
 import { SourceChips, TrackBadges } from "./Badges";
 
 export interface Entry {
@@ -14,6 +14,30 @@ export interface Entry {
   data?: unknown;
   model?: string;
   memory?: string; // conversation / episode written for this answer
+  verification?: Verification;
+}
+
+const VERDICT: Record<string, string> = {
+  verified: "bg-green-100 text-green-800 border-green-300",
+  partially_verified: "bg-amber-100 text-amber-800 border-amber-300",
+  unverified: "bg-red-100 text-red-800 border-red-300",
+  no_citations: "bg-gray-100 text-gray-600 border-gray-300",
+};
+
+/** Deterministic proof check: every id the answer cites must exist in the graph and come from a tool result. */
+function ProofBadge({ v }: { v: Verification }) {
+  const label = v.verdict === "no_citations" ? "no ids cited"
+    : `${v.verdict === "verified" ? "✓" : "!"} ${v.grounded.length}/${v.cited} claims grounded`;
+  return (
+    <div className="mt-2 text-[11px]">
+      <span className={`rounded border px-1.5 py-0.5 font-semibold ${VERDICT[v.verdict]}`}
+            title="Checked by code, not a model: each cited id must exist in this tenant's graph and appear in a tool result from this run">
+        proof check: {label}
+      </span>
+      {v.unbacked.length > 0 && <span className="ml-1.5 text-amber-700">not shown by a tool: {v.unbacked.join(", ")}</span>}
+      {v.unknown.length > 0 && <span className="ml-1.5 font-semibold text-red-700">not in the graph: {v.unknown.join(", ")}</span>}
+    </div>
+  );
 }
 
 export const entryTracks = (e: Entry): Track[] => [...new Set(e.steps.flatMap((s) => s.tracks))];
@@ -39,6 +63,7 @@ export default function EntryCard({ entry, active, onSelect, onCypher, onDoc }: 
       {entry.pending && <p className="mt-2 animate-pulse text-xs text-gray-500">Traversing the graph…</p>}
       {entry.error && <p className="mt-2 rounded bg-red-50 p-2 text-xs text-red-700">{entry.error}</p>}
       {entry.answer && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{entry.answer}</p>}
+      {entry.verification && <ProofBadge v={entry.verification} />}
 
       {entry.steps.length > 0 && (
         <ol className="mt-3 space-y-1.5 border-l-2 border-gray-200 pl-3">

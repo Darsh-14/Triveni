@@ -408,3 +408,23 @@ WITH DISTINCT l
 SET l.confidence = CASE WHEN l.confidence - 0.15 < 0.05 THEN 0.05 ELSE l.confidence - 0.15 END
 RETURN l.id, l.confidence
 ```
+
+## Differentiators
+
+### what_if: counterfactuals on a GRAPH.COPY sandbox **[01] [03]**
+`backend/app/tools/what_if.py`. FalkorDB `GRAPH.COPY` clones the tenant graph in about 0.1 s on Cloud. The hypothetical change is applied **to the copy only**, the Derived projections are rebuilt there, and the same algorithms run before and after (betweenness, WCC, expertise coverage, blast radius). The result is the difference, and the copy is deleted. A test proves the real graph's node and edge counts don't change.
+```cypher
+GRAPH.COPY tenant_acme tenant_acme__whatif_<id>
+MATCH (x:Person {id: $id}) DETACH DELETE x          -- or Team / Service, on the sandbox only
+MATCH (s:Service) OPTIONAL MATCH (p:Person)-[:KNOWS]->(s) RETURN s.id, s.name, collect(p.id)
+MATCH (p:Person {id: $id})
+OPTIONAL MATCH (p)-[k:KNOWS]->(s:Service)
+OPTIONAL MATCH (p)-[c:ON_CALL_FOR]->(oc:Service) WHERE c.valid_to IS NULL
+RETURN collect(DISTINCT s.id), collect(DISTINCT oc.id)
+```
+
+### Deterministic proof check of every agent answer **[01] [02] [03]**
+`backend/app/agents/verify.py`. Code, not a model, has the last word. Every id the answer cites must (1) exist in the tenant graph and (2) appear in a tool result from this run, or in the user's own question or history. Otherwise it is reported as `unknown` (an invented id) or `unbacked` (exists, but no tool showed it).
+```cypher
+MATCH (n) WHERE n.id IN $ids RETURN n.id
+```

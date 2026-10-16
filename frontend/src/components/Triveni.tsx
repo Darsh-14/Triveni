@@ -21,6 +21,8 @@ const SCENARIOS: { n: number; label: string; question: string; tool?: [string, R
     tool: ["key_people", {}] },
   { n: 6, label: "Hand off inc:0057 to remediation", question: "inc:0057: orders-api p99 latency is above 4s and workers are saturated. Investigate briefly, then hand it off to remediation for a fix.",
     tool: ["similar_incidents", { incident: "inc:0057" }] },
+  { n: 9, label: "What if Priya Nair leaves?", question: "What happens to our knowledge coverage if Priya Nair leaves?",
+    tool: ["what_if", { scenario: "person_leaves", entity: "per:priya-nair" }] },
   { n: 7, label: "Ingest: billing-batch moves to Atlas", question: "Ingest #eng-announcements: billing-batch moves to Team Atlas",
     ingest: "data/raw/live/chat-billing-move.md" },
 ];
@@ -168,6 +170,7 @@ export default function Triveni() {
       refreshConversations();
       setCoordKey((k) => k + 1);
       await finish(entry.id, { answer: r.answer, steps: r.steps, memory: `${r.conversation_id} · ${r.episode || "no episode"}`,
+                               verification: r.verification,
                               model: r.fallbacks.length ? `${r.model} (fell back: ${r.fallbacks.map((f) => f.split(":")[0]).join(", ")})` : r.model }, entry);
     } catch (e) {
       update(entry.id, { pending: false, error: (e as Error).message });
@@ -275,7 +278,8 @@ export default function Triveni() {
                 if (!r.result) return;
                 const res = r.result;
                 const entry: Entry = { id: newId(), question: label, mode: "agent", pending: false, steps: res.steps, answer: res.answer,
-                                       model: res.model, memory: `${res.conversation_id} · ${res.episode || "no episode"}` };
+                                       model: res.model, memory: `${res.conversation_id} · ${res.episode || "no episode"}`,
+                                       verification: res.verification };
                 setEntries((es) => [entry, ...es]);
                 setActiveId(entry.id);
                 showResult(entry);

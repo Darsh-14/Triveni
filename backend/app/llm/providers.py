@@ -227,6 +227,13 @@ class RulesProvider:
         ids = ID_RE.findall(q)
         services = [s for s in SERVICE_RE.findall(q) if not s.startswith(("on-call", "single-point"))]
         svc = services[0] if services else None
+        # counterfactuals: "if Priya Nair leaves", "if Team Ledger is dissolved", "if we decommission pdf-renderer-v1"
+        if m := re.search(r"if ([a-z][a-z .'-]+?) (?:leaves|left|quits|resigns)", q):
+            return [("what_if", {"scenario": "person_leaves", "entity": m.group(1).strip()})]
+        if m := re.search(r"if (?:team )?([a-z][a-z-]+) (?:is |was |were )?(?:dissolved|disbanded)", q):
+            return [("what_if", {"scenario": "team_dissolved", "entity": m.group(1)})]
+        if m := re.search(r"decommission(?:ed)? ([a-z][a-z0-9-]+)|if ([a-z][a-z0-9-]+) (?:is |was )?decommissioned", q):
+            return [("what_if", {"scenario": "service_decommissioned", "entity": m.group(1) or m.group(2)})]
         incident = next((i for i in ids if i.startswith("inc:")), None)
         if incident and re.search(r"hand ?off|escalate|remediat", q) and not q.startswith("handoff "):
             return [("handoff", {"incident": incident, "summary": question[:300], "request": "Investigate and propose a fix."})]

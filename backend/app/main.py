@@ -48,7 +48,7 @@ def health():
 
 @app.get("/api/tenants")
 def tenants():
-    return [t for t in list_tenants() if not t.startswith(("test_", "dbg_"))]
+    return [t for t in list_tenants() if not t.startswith(("test_", "dbg_", "eval_", "conc_")) and "__whatif" not in t]
 
 
 @app.get("/api/tools")
