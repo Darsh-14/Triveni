@@ -56,7 +56,7 @@ _TODO: diagram + node/edge tables._
 | Knowledge from docs, tickets, chats in one graph | `ingest_document`: LLM extraction into the fixed schema (unknown types impossible by output schema, invalid endpoints rejected), MERGE with `source_doc` on every edge (`backend/app/ingest/`) |
 | Who owns what, who knows what | `owner_of` (current owner + on-call with sources, optional history); `who_knows` (people ranked by evidence: resolved incidents, deploys, decisions, docs, on-call, each with its path); `why_not` (absence proof, e.g. no on-call for billing-batch, plus who to contact instead) |
 | Tracing decisions to source | `decision_trail`: SUPERSEDES chain → GOVERNS → EVIDENCE_FOR source ADRs; flags runbooks that still cite a superseded decision; checks whether an action is forbidden |
-| Keeping knowledge current | Temporal State edges (`valid_from`/`valid_to`/`ended_by`): a contradicting fact closes the old edge and creates the new one; history is never deleted (`ingest/temporal.py`) |
+| Keeping knowledge current | Temporal State edges (`valid_from`/`valid_to`/`ended_by`): a contradicting fact closes the old edge and creates the new one; history is never deleted (`ingest/temporal.py`). **Change impact:** when an ingested document changes a fact, Triveni reports what it touches (stale runbooks, governing decisions the new owner must respect, memory about the service to review) and proposes an approval-gated `notify_owner` action |
 | Answers with clear sources | Every tool returns `sources` (Document ids taken from `source_doc` on the edges it used), plus `cypher`, `params` and `paths` (provenance contract, `tools/base.py`) |
 
 ## Cypher and algorithms used

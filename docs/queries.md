@@ -428,3 +428,17 @@ RETURN collect(DISTINCT s.id), collect(DISTINCT oc.id)
 ```cypher
 MATCH (n) WHERE n.id IN $ids RETURN n.id
 ```
+
+### Change impact on ingest **[03] -> [02] -> [01]**
+`backend/app/ingest/impact.py`, called by `pipeline.ingest()` and the `ingest_document` tool. For every service whose OWNS, ON_CALL_FOR or DEPENDS_ON fact actually changed (created or ended, so a re-ingest triggers nothing), it reports stale runbooks (`gate.STALE`), current constraining decisions (`gate.current_decisions`), memory to review, and who owns it and is on call now. It then proposes an approval-gated `notify_owner` action (`proposed_by: system:ingest`).
+```cypher
+MATCH (s:Service {id: $svc})
+OPTIONAL MATCH (e:Episode)-[:INVOLVED]->(s)
+OPTIONAL MATCH (p:Procedure)-[:FOR]->(s)
+RETURN s.name, collect(DISTINCT {id: e.id, question: e.question, ts: e.ts}), collect(DISTINCT {id: p.id, name: p.name})
+
+MATCH (s:Service {id: $svc})
+OPTIONAL MATCH (t:Team)-[o:OWNS]->(s) WHERE o.valid_to IS NULL
+OPTIONAL MATCH (p:Person)-[c:ON_CALL_FOR]->(s) WHERE c.valid_to IS NULL
+RETURN t.id, t.name, p.id, p.name
+```

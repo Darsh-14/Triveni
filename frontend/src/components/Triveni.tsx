@@ -183,6 +183,7 @@ export default function Triveni() {
     try {
       const [r, ms] = await timed(() => api.ingest(tenant, path));
       await finish(entry.id, { steps: [toolAsStep("ingest_document", { path }, r, ms)], data: r.data }, entry);
+      setCoordKey((k) => k + 1); // a changed fact may have proposed a notify_owner action
     } catch (e) {
       update(entry.id, { pending: false, error: (e as Error).message });
     }

@@ -9,6 +9,7 @@ import json
 from backend.app.graph.projections import refresh_projections
 from backend.app.graph.tenant import get_graph
 from backend.app.ingest.extract import Extraction, extract, read_document
+from backend.app.ingest.impact import change_impact
 from backend.app.ingest.merge import apply
 
 
@@ -22,6 +23,7 @@ def ingest(tenant: str, path: str, extraction: Extraction | None = None, refresh
     report = apply(graph, doc, extraction)
     report["extracted_by"] = origin
     report["projections"] = refresh_projections(graph)  # keep KNOWS / RESPONSIBLE_FOR current
+    report["impact"] = change_impact(graph, report)  # what the changed facts touch + approval-gated notification
     return report
 
 
@@ -34,7 +36,7 @@ def main() -> None:
     for pattern in args.paths:
         for path in sorted(glob.glob(pattern)) or [pattern]:
             report = ingest(args.tenant, path, refresh=args.refresh)
-            summary = {k: report[k] for k in ("document", "extracted_by", "entities", "facts", "rejected")}
+            summary = {k: report[k] for k in ("document", "extracted_by", "entities", "facts", "rejected", "impact")}
             print(json.dumps(summary, indent=2))
 
 
