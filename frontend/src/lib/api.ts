@@ -35,12 +35,20 @@ export interface Step {
   via: string;
 }
 
+export interface Health {
+  falkordb: boolean;
+  agent: boolean;
+  providers: string[]; // tried in order; "rules" = no model
+  model_backed: boolean;
+}
+
 export interface AgentResult {
   question: string;
   tenant: string;
   answer: string;
   steps: Step[];
   model: string;
+  fallbacks: string[];
   tracks: Track[];
   sources: string[];
 }
@@ -101,7 +109,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: () => call<{ falkordb: boolean; agent: boolean; model: string }>("/api/health"),
+  health: () => call<Health>("/api/health"),
   tenants: () => call<string[]>("/api/tenants"),
   tools: () => call<ToolInfo[]>("/api/tools"),
   runTool: (tenant: string, name: string, args: Record<string, unknown>) =>

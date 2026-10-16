@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, parseEdge, toolAsStep, type GraphEdge, type GraphNode, type Step, type ToolInfo } from "@/lib/api";
+import { api, parseEdge, toolAsStep, type GraphEdge, type GraphNode, type Health, type Step, type ToolInfo } from "@/lib/api";
 import Drawer, { type DrawerContent } from "./Drawer";
 import EntryCard, { type Entry } from "./EntryCard";
 import GraphCanvas, { edgeKey, LABEL_COLOURS } from "./GraphCanvas";
@@ -35,7 +35,7 @@ async function timed<T>(fn: () => Promise<T>): Promise<[T, number]> {
 export default function Triveni() {
   const [tenants, setTenants] = useState<string[]>([]);
   const [tenant, setTenant] = useState("acme");
-  const [health, setHealth] = useState<{ falkordb: boolean; agent: boolean; model: string } | null>(null);
+  const [health, setHealth] = useState<Health | null>(null);
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -128,7 +128,8 @@ export default function Triveni() {
     setEntries((es) => [entry, ...es]);
     try {
       const r = await api.ask(tenant, q);
-      await finish(entry.id, { answer: r.answer, steps: r.steps, model: r.model }, entry);
+      await finish(entry.id, { answer: r.answer, steps: r.steps,
+                              model: r.fallbacks.length ? `${r.model} (fell back: ${r.fallbacks.map((f) => f.split(":")[0]).join(", ")})` : r.model }, entry);
     } catch (e) {
       update(entry.id, { pending: false, error: (e as Error).message });
     }
@@ -173,9 +174,9 @@ export default function Triveni() {
         </div>
         <div className="flex items-center gap-3 text-xs">
           <span className={health?.falkordb ? "text-green-700" : "text-red-700"}>● FalkorDB</span>
-          <span className={agentOnline ? "text-green-700" : "text-amber-600"}
-                title={agentOnline ? health?.model : "Add ANTHROPIC_API_KEY to .env to enable the agent"}>
-            ● Agent {agentOnline ? health?.model : "offline (tools only)"}
+          <span className={health?.model_backed ? "text-green-700" : "text-amber-600"}
+                title="Providers are tried in order; rules = keyword planner, no model (set GROQ_API_KEY / GEMINI_API_KEY)">
+            ● Agent {health ? health.providers.join(" → ") : "…"}
           </span>
           <label className="flex items-center gap-1">
             tenant
