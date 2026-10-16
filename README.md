@@ -46,7 +46,7 @@ _TODO: diagram + node/edge tables._
 | Episodic, semantic, procedural memory | `remember` writes Episode (INVOLVED entities, RAN by the agent), Lesson (reinforced, not duplicated) and Procedure (success/fail counters); `recall` finds past episodes **through shared graph entities**: a new payments-api incident reaches last month's episode via `svc:payments-api` |
 | Persistent conversation history | Conversation -HAS_MESSAGE-> Message chained by NEXT; every request rebuilds the model's context from the graph (no in-process state, tested with a real process restart); the UI reopens any conversation |
 | Shared state and handoffs | Triage and Remediation run as separate agents with separate MCP servers and share only graph state: Handoff nodes (open → claimed → done) with an atomic single-statement claim (8 concurrent claimers → 1 winner, tested) |
-| High-concurrency reads and writes | _TODO_ |
+| High-concurrency reads and writes | `python -m backend.app.coordination.concurrency`: 16 agents on two tenants at once, 400 remember/recall/handoff/history operations in 5.3 s, p95 < 115 ms per operation to FalkorDB Cloud, 0 cross-tenant reads, 0 double claims, 0 duplicate message seq ([docs/concurrency.md](docs/concurrency.md)) |
 | Separate memory per user or tenant | One graph per tenant; isolation test (`backend/tests/test_isolation.py`) |
 
 ## Track 03: Company Brain
