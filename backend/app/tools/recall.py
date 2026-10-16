@@ -30,10 +30,13 @@ def recall(graph, entities: list[str], limit: int = 5) -> ToolResult:
         paths += [{"nodes": [ep["id"], p["id"]], "edges": [edge_ref("USED", ep["id"], p["id"])]} for p in ep["procedures"]]
         paths += [{"nodes": [ep["id"], lesson["id"]], "edges": [edge_ref("LEARNED", ep["id"], lesson["id"])]} for lesson in ep["lessons"]]
     best = found["episodes"][0] if found["episodes"] else None
+    faded = [lesson["id"] for ep in found["episodes"] for lesson in ep["lessons"] if lesson["faded"]]
     explanation = (f"{len(found['episodes'])} past episode(s) share entities with {', '.join(ids)}. "
                    + (f"Closest: {best['id']} ({best['outcome']}, shared {', '.join(best['shared'])})"
                       + (f"; procedure '{best['procedures'][0]['name']}' worked {best['procedures'][0]['success_count']}x, "
                          f"failed {best['procedures'][0]['fail_count']}x" if best["procedures"] else "") + "."
-                      if best else "Nothing in memory yet."))
+                      if best else "Nothing in memory yet.")
+                   + (f" Lessons decay with a {found['half_life_days']:g}-day half-life"
+                      + (f"; faded: {', '.join(faded)}." if faded else ".") if found["episodes"] else ""))
     return ToolResult(data=found, cypher=EXPAND.strip() + "\n\n" + RECALL.strip(),
                       params={"ids": found["expanded"], "limit": limit}, paths=paths, explanation=explanation)

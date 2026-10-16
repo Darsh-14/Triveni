@@ -1,7 +1,8 @@
 """Episodic, semantic and procedural memory (Track 02).
 
   Episode   what happened (question, outcome), linked to the entities it INVOLVED and the Agent that RAN it
-  Lesson    what was learned; the same lesson learned again is reinforced (confidence up), not duplicated
+  Lesson    what was learned; the same lesson learned again is reinforced (confidence up), not duplicated;
+            a failed procedure weakens the lessons learned alongside it; age is applied on read (recall.py)
   Procedure how it was fixed; reused by name, with success_count / fail_count updated from outcomes
 """
 from falkordb import Graph
@@ -46,6 +47,15 @@ RETURN count(s)
 """
 
 
+# A procedure that failed weakens what was learned in the episodes that used it (persisted; floor 0.05)
+CONTRADICT = """
+MATCH (p:Procedure {id: $pid})<-[:USED]-(e:Episode)-[:LEARNED]->(l:Lesson)
+WITH DISTINCT l
+SET l.confidence = CASE WHEN l.confidence - 0.15 < 0.05 THEN 0.05 ELSE l.confidence - 0.15 END
+RETURN l.id, l.confidence
+"""
+
+
 def remember(graph: Graph, agent: str, question: str, outcome: str, involved: list[str],
              lesson: str | None = None, procedure: dict | None = None, procedure_result: str | None = None) -> dict:
     """Write one Episode (+ optional Lesson / Procedure). procedure = {"name", "steps": [...]}."""
@@ -65,4 +75,7 @@ def remember(graph: Graph, agent: str, question: str, outcome: str, involved: li
         if services:
             graph.query(PROCEDURE_FOR, {"pid": pid, "services": services, "ts": ts})
         out["procedure"] = {"id": pid, "success_count": ok, "fail_count": failed}
+        if procedure_result == "fail":
+            out["weakened_lessons"] = [{"id": i, "confidence": round(c, 2)}
+                                       for i, c in graph.query(CONTRADICT, {"pid": pid}).result_set]
     return out

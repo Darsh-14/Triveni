@@ -399,3 +399,12 @@ RETURN h.id, h.ts, h.status, h.payload, src.id, dst.id, i.id, h.claimed_by, h.re
 ORDER BY h.ts DESC
 LIMIT $limit
 ```
+
+### Memory decay and contradiction **[02]**
+`backend/app/memory/recall.py`, `remember.py`. Decay is applied when memory is read: effective confidence = stored confidence x 0.5^(days since last reinforced / half-life), with `TRIVENI_MEMORY_HALF_LIFE_DAYS` defaulting to 90. Lessons below 0.15 are returned but flagged `faded`, never deleted. Episodes rank by shared entities + recency. A failed procedure persistently weakens the lessons learned in episodes that used it:
+```cypher
+MATCH (p:Procedure {id: $pid})<-[:USED]-(e:Episode)-[:LEARNED]->(l:Lesson)
+WITH DISTINCT l
+SET l.confidence = CASE WHEN l.confidence - 0.15 < 0.05 THEN 0.05 ELSE l.confidence - 0.15 END
+RETURN l.id, l.confidence
+```

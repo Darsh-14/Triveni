@@ -130,3 +130,49 @@ def test_agent_persists_conversation_and_episode_and_reloads_history(graph):
     sent = [m["content"] for m in second.requests[0]["messages"] if m["role"] in ("user", "assistant")]
     assert sent == ["Who owns billing-batch?", "Ledger owns billing-batch.", "And who is on call?"]  # history from the graph
     assert r2.conversation_id == r1.conversation_id and len(load_history(graph, r1.conversation_id)) == 4
+
+
+# ---------------------------------------------------------------- decay (P1)
+def test_lessons_decay_with_age_on_read(graph):
+    from datetime import datetime, timedelta, timezone
+
+    from backend.app.memory.recall import HALF_LIFE_DAYS, recall
+
+    reinforced = rows(graph, "MATCH (l:Lesson {id: 'lesson:pool-exhaustion'}) RETURN l.last_reinforced")[0][0]
+    seeded = datetime.strptime(reinforced, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)  # as stored, whatever ran before
+    fresh = recall(graph, ["svc:payments-api"], now=seeded)
+    later = recall(graph, ["svc:payments-api"], now=seeded + timedelta(days=HALF_LIFE_DAYS))
+    much_later = recall(graph, ["svc:payments-api"], now=seeded + timedelta(days=4 * HALF_LIFE_DAYS))
+
+    def lesson(r):
+        return next(x for ep in r["episodes"] for x in ep["lessons"] if x["id"] == "lesson:pool-exhaustion")
+
+    stored = lesson(fresh)["confidence"]
+    assert lesson(fresh)["effective_confidence"] == round(stored, 2)
+    assert lesson(later)["effective_confidence"] == round(stored * 0.5, 2)  # one half-life
+    assert lesson(much_later)["faded"] is True  # still returned, flagged, never deleted
+    assert lesson(much_later)["confidence"] == stored  # the stored value is not rewritten by reading
+
+
+def test_recent_episodes_rank_first_when_sharing_the_same_entities(graph):
+    from backend.app.memory.recall import recall
+    from backend.app.memory.remember import remember
+
+    old = remember(graph, "agent:triage", "decay-old", "answered", ["svc:fraud-scorer"])["episode"]
+    graph.query("MATCH (e:Episode {id: $e}) SET e.ts = '2025-01-01T00:00:00Z'", {"e": old})
+    new = remember(graph, "agent:triage", "decay-new", "answered", ["svc:fraud-scorer"])["episode"]
+    ranked = [e["id"] for e in recall(graph, ["svc:fraud-scorer"])["episodes"]]
+    assert ranked.index(new) < ranked.index(old)
+
+
+def test_failed_procedure_weakens_lessons_learned_with_it(graph):
+    from backend.app.memory.remember import remember
+
+    first = remember(graph, "agent:triage", "cache flush", "resolved", ["svc:config-svc"],
+                     lesson="Flushing the config cache fixes stale flags.",
+                     procedure={"name": "Flush config cache", "steps": []}, procedure_result="success")
+    before = first["lesson"]["confidence"]
+    failed = remember(graph, "agent:triage", "cache flush again", "escalated", ["svc:config-svc"],
+                      procedure={"name": "Flush config cache", "steps": []}, procedure_result="fail")
+    weakened = {x["id"]: x["confidence"] for x in failed["weakened_lessons"]}
+    assert weakened[first["lesson"]["id"]] == round(before - 0.15, 2)

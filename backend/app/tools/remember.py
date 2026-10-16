@@ -1,6 +1,6 @@
 """remember (Track 02, write tool): store what happened as an Episode, with an optional Lesson and Procedure.
 The acting agent is set by the server, never by the model."""
-from backend.app.memory.remember import EPISODE, LESSON, PROCEDURE, PROCEDURE_FOR, remember as store
+from backend.app.memory.remember import CONTRADICT, EPISODE, LESSON, PROCEDURE, PROCEDURE_FOR, remember as store
 from backend.app.tools.base import ToolResult, edge_ref, tool
 
 
@@ -47,5 +47,7 @@ def remember(graph, question: str, outcome: str, involved: list[str], agent: str
     if "procedure" in out:
         p = out["procedure"]
         bits.append(f"procedure {p['id']} now {p['success_count']} success / {p['fail_count']} fail")
-    return ToolResult(data=out, cypher="\n\n".join(q.strip() for q in (EPISODE, LESSON, PROCEDURE, PROCEDURE_FOR)),
+    if out.get("weakened_lessons"):
+        bits.append("weakened lessons " + ", ".join(f"{x['id']} -> {x['confidence']}" for x in out["weakened_lessons"]))
+    return ToolResult(data=out, cypher="\n\n".join(q.strip() for q in (EPISODE, LESSON, PROCEDURE, PROCEDURE_FOR, CONTRADICT)),
                       params={"agent": agent, "involved": involved}, paths=paths, explanation="; ".join(bits) + ".")
