@@ -216,6 +216,31 @@ def test_short_rate_limit_is_waited_out_on_the_same_provider(loaded):
     assert r.model == "groq:q" and r.fallbacks == []
 
 
+
+def test_ui_mode_does_not_wait_out_rate_limits(loaded):
+    """max_wait=0 (live UI requests): the same short limit that is waited out above falls through to the next provider."""
+    import httpx
+    import openai
+
+    limited = openai.RateLimitError("rate limited", body=None, response=httpx.Response(
+        429, headers={"x-ratelimit-reset-tokens": "120ms"}, request=httpx.Request("POST", "http://x")))
+    groq = OpenAICompatProvider("groq", client=ScriptedOpenAI([limited, _oa("never reached")]), model="m", max_wait=0)
+    gemini = OpenAICompatProvider("gemini", client=ScriptedOpenAI([_oa("ok via gemini", model="g")]), model="m", max_wait=0)
+    events = []
+    r = anyio.run(lambda: run_agent("hello", "test_acme", SYSTEM, persist=False, providers=[groq, gemini],
+                                    progress=events.append))
+    assert r.model == "gemini:g" and len(groq.client.requests) == 1  # one try on groq, no wait, no retry
+    assert "groq unavailable (rate limited), falling back" in events
+    assert events[0].startswith("starting the MCP server") and events[-1].startswith("checking every cited id")
+
+
+def test_progress_reports_each_tool_call(loaded):
+    events = []
+    anyio.run(lambda: run_agent("payments-api is failing, who do I page?", "test_acme", SYSTEM, persist=False,
+                                providers=[RulesProvider()], progress=events.append))
+    assert [e for e in events if "calling" in e] == [
+        "rules: calling blast_radius over MCP", "rules: calling similar_incidents over MCP", "rules: calling recall over MCP"]
+
 def test_large_tool_results_are_cut_for_the_model():
     from backend.app.agents.loop import MAX_RESULT_CHARS, for_model
 

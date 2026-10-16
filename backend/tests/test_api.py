@@ -60,3 +60,17 @@ def test_conversation_endpoints(client):
     assert [m["seq"] for m in msgs] == [0, 1, 2, 3]
     assert client.get("/api/conversations/conv:none", params={"tenant": "test_acme"}).status_code == 404
     assert client.post("/api/ask", json={"tenant": "test_acme", "question": "hello", "conversation_id": "bad id"}).status_code == 422
+
+
+def test_ask_progress_is_pollable(client, acme, monkeypatch):
+    from backend.app import main
+    from backend.app.llm.providers import RulesProvider
+
+    real = main.run_agent
+    monkeypatch.setattr(main, "run_agent", lambda *a, **kw: real(*a, **kw, providers=[RulesProvider()], persist=False))
+    assert client.get("/api/ask/progress/run:not-started").json() == {"run_id": "run:not-started", "done": False, "events": []}
+    r = client.post("/api/ask", json={"tenant": "test_acme", "question": "payments-api is failing", "run_id": "run:t1234"})
+    assert r.status_code == 200 and r.json()["model"] == "rules"
+    p = client.get("/api/ask/progress/run:t1234").json()
+    assert p["done"] is True and any("calling blast_radius" in e["msg"] for e in p["events"])
+    assert client.post("/api/ask", json={"tenant": "test_acme", "question": "hi there", "run_id": "bad id"}).status_code == 422

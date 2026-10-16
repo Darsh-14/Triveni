@@ -64,8 +64,9 @@ def _wait_seconds(exc) -> float | None:
     return 10.0
 
 
-async def _with_limit_retry(call):
-    """Call once; if the provider says "rate limited, retry in N s" with a short N, wait and retry once."""
+async def _with_limit_retry(call, max_wait: float = 30.0):
+    """Call once; if the provider says "rate limited, retry in N s" with N <= max_wait, wait and retry once.
+    max_wait=0 never waits: the caller moves on to the next provider (live UI requests)."""
     import anyio
     import openai
 
@@ -73,7 +74,7 @@ async def _with_limit_retry(call):
         return await call()
     except openai.APIStatusError as exc:
         wait = _wait_seconds(exc)
-        if wait is None:
+        if wait is None or wait > max_wait:
             raise
         await anyio.sleep(wait)
         return await call()
@@ -81,13 +82,16 @@ async def _with_limit_retry(call):
 
 # --------------------------------------------------------------------------- OpenAI-compatible (Groq, Gemini)
 class OpenAICompatProvider:
-    def __init__(self, name: str, client=None, model: str | None = None):
+    def __init__(self, name: str, client=None, model: str | None = None, max_wait: float = 30.0):
         base_url, key_env, model_env, default_model = OPENAI_COMPAT[name]
         self.name = name
         self.model = model or os.getenv(model_env, default_model)
+        self.max_wait = max_wait  # longest rate-limit wait before giving up on this provider
         if client is None:
             from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=os.getenv(key_env), base_url=base_url, max_retries=1, timeout=60)
+            # no SDK retries when we may not wait: a 429 should fall through to the next provider at once
+            client = AsyncOpenAI(api_key=os.getenv(key_env), base_url=base_url, max_retries=1 if max_wait else 0,
+                                 timeout=60 if max_wait else 25)
         self.client = client
 
     @staticmethod
@@ -106,7 +110,7 @@ class OpenAICompatProvider:
                 model=self.model, temperature=0.2,
                 messages=[{"role": "system", "content": system}, *messages],
                 tools=self.tool_defs(tools), tool_choice="auto",
-            ))
+            ), self.max_wait)
         except (openai.APIStatusError, openai.APIConnectionError) as exc:  # 413/429/5xx/auth/timeouts: try the next provider
             raise ProviderUnavailable(f"{self.name}: {type(exc).__name__}: {exc}") from exc
         msg = resp.choices[0].message
@@ -138,7 +142,7 @@ class OpenAICompatProvider:
         try:
             resp = await _with_limit_retry(lambda: self.client.chat.completions.create(
                 model=self.model, temperature=0.2,
-                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}]))
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}]), self.max_wait)
         except (openai.APIStatusError, openai.APIConnectionError) as exc:
             raise ProviderUnavailable(f"{self.name}: {type(exc).__name__}: {exc}") from exc
         self.last_tokens = getattr(getattr(resp, "usage", None), "total_tokens", 0) or 0
@@ -152,7 +156,7 @@ class OpenAICompatProvider:
             resp = await _with_limit_retry(lambda: self.client.chat.completions.create(
                 model=self.model, temperature=0.1, response_format={"type": "json_object"},
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            ))
+            ), self.max_wait)
         except (openai.APIStatusError, openai.APIConnectionError) as exc:  # 413/429/5xx/auth/timeouts: try the next provider
             raise ProviderUnavailable(f"{self.name}: {type(exc).__name__}: {exc}") from exc
         return resp.choices[0].message.content or "", f"{self.name}:{resp.model}"
@@ -310,9 +314,10 @@ def provider_order(include_rules: bool = True) -> list[str]:
     return [n for n in names if available(n) and (include_rules or n != "rules")]
 
 
-def make(name: str):
+def make(name: str, max_wait: float = 30.0):
+    """max_wait: longest rate-limit wait per call (s). The UI passes 0 so a limited provider falls through at once."""
     if name in OPENAI_COMPAT:
-        return OpenAICompatProvider(name)
+        return OpenAICompatProvider(name, max_wait=max_wait)
     if name == "anthropic":
         return AnthropicProvider()
     if name == "rules":

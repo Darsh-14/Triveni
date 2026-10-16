@@ -3,6 +3,7 @@
     uvicorn backend.app.main:app --reload
 """
 import os
+import time
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -79,15 +80,50 @@ class Ask(BaseModel):
     question: str = Field(min_length=3, max_length=2000)
     conversation_id: str | None = Field(default=None, pattern=r"^conv:[a-z0-9-]+$")
     user_id: str = Field(default="user:demo", pattern=r"^user:[a-z0-9-]+$")
+    run_id: str | None = Field(default=None, pattern=r"^run:[a-z0-9-]{4,40}$")  # lets the UI poll live status
+
+
+# Live status of running /api/ask calls, for the UI's "thinking" indicator only. This is display state for one
+# HTTP request, not agent state: agents still coordinate only through Handoff nodes in the graph.
+PROGRESS: dict[str, dict] = {}
+PROGRESS_TTL_S = 300
+# Live requests do not wait out rate limits: a limited provider falls through to the next one at once.
+UI_MAX_WAIT_S = float(os.getenv("TRIVENI_UI_MAX_WAIT", "0"))
+
+
+def _progress_recorder(run_id: str | None):
+    if run_id is None:
+        return None
+    now = time.time()
+    for key in [k for k, v in PROGRESS.items() if now - v["started"] > PROGRESS_TTL_S]:
+        PROGRESS.pop(key, None)
+    PROGRESS[run_id] = {"started": now, "done": False, "events": []}
+
+    def record(msg: str) -> None:
+        PROGRESS[run_id]["events"].append({"t": round(time.time() - now, 1), "msg": msg})
+    return record
 
 
 @app.post("/api/ask")
 async def ask(body: Ask):
     tenant_graph(body.tenant)
     # history is rebuilt from the graph; the answer, the conversation and an episode are written back to it
-    result = await run_agent(body.question, body.tenant, TRIAGE_SYSTEM, conversation_id=body.conversation_id,
-                             user_id=body.user_id)  # falls back to rules mode if no model answers
+    try:
+        result = await run_agent(body.question, body.tenant, TRIAGE_SYSTEM, conversation_id=body.conversation_id,
+                                 user_id=body.user_id, max_wait=UI_MAX_WAIT_S,
+                                 progress=_progress_recorder(body.run_id))  # falls back to rules mode if no model answers
+    finally:
+        if body.run_id in PROGRESS:
+            PROGRESS[body.run_id]["done"] = True
     return result.to_dict()
+
+
+@app.get("/api/ask/progress/{run_id}")
+def ask_progress(run_id: str):
+    run = PROGRESS.get(run_id)
+    if run is None:
+        return {"run_id": run_id, "done": False, "events": []}  # not started yet (the poll can beat the POST)
+    return {"run_id": run_id, "done": run["done"], "events": run["events"]}
 
 
 @app.get("/api/conversations")

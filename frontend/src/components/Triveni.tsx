@@ -30,6 +30,11 @@ const SCENARIOS: { n: number; label: string; question: string; tool?: [string, R
 let counter = 0;
 const newId = () => `e${++counter}`;
 
+/** A pending entry stamped with its start time (module-level, so the clock is read outside rendering). */
+const pendingEntry = (question: string, mode: Entry["mode"]): Entry =>
+  ({ id: newId(), question, mode, pending: true, steps: [], startedAt: Date.now() });
+const newRunId = () => `run:${crypto.randomUUID().slice(0, 13)}`;
+
 /** Run an async call and measure it (module-level, so it is clearly not part of rendering). */
 async function timed<T>(fn: () => Promise<T>): Promise<[T, number]> {
   const t0 = performance.now();
@@ -151,7 +156,7 @@ export default function Triveni() {
 
   // ---------------------------------------------------------------- actions
   const runTool = async (name: string, args: Record<string, unknown>, label?: string) => {
-    const entry: Entry = { id: newId(), question: label ?? `${name}(${JSON.stringify(args)})`, mode: "tool", pending: true, steps: [] };
+    const entry = pendingEntry(label ?? `${name}(${JSON.stringify(args)})`, "tool");
     setEntries((es) => [entry, ...es]);
     try {
       const [r, ms] = await timed(() => api.runTool(tenant, name, args));
@@ -162,10 +167,15 @@ export default function Triveni() {
   };
 
   const ask = async (q: string) => {
-    const entry: Entry = { id: newId(), question: q, mode: "agent", pending: true, steps: [] };
+    const entry = pendingEntry(q, "agent");
     setEntries((es) => [entry, ...es]);
+    // poll the backend's live status (provider tried, tool called, fallbacks) while the answer is pending
+    const runId = newRunId();
+    const poll = setInterval(() => {
+      api.askProgress(runId).then((p) => update(entry.id, { progress: p.events })).catch(() => {});
+    }, 700);
     try {
-      const r = await api.ask(tenant, q, conversationId);
+      const r = await api.ask(tenant, q, conversationId, runId).finally(() => clearInterval(poll));
       setConversationId(r.conversation_id);
       refreshConversations();
       setCoordKey((k) => k + 1);
@@ -178,7 +188,7 @@ export default function Triveni() {
   };
 
   const ingest = async (path: string, label: string) => {
-    const entry: Entry = { id: newId(), question: label, mode: "ingest", pending: true, steps: [] };
+    const entry = pendingEntry(label, "ingest");
     setEntries((es) => [entry, ...es]);
     try {
       const [r, ms] = await timed(() => api.ingest(tenant, path));

@@ -43,6 +43,18 @@ export interface Verification {
   unknown: string[];
 }
 
+/** Live status of a running /api/ask call: which provider is being tried, which tool is running, fallbacks. */
+export interface ProgressEvent {
+  t: number; // seconds since the request started
+  msg: string;
+}
+
+export interface AskProgress {
+  run_id: string;
+  done: boolean;
+  events: ProgressEvent[];
+}
+
 export interface Health {
   falkordb: boolean;
   agent: boolean;
@@ -144,8 +156,9 @@ export const api = {
   tools: () => call<ToolInfo[]>("/api/tools"),
   runTool: (tenant: string, name: string, args: Record<string, unknown>) =>
     call<ToolResult>(`/api/tools/${name}`, { method: "POST", body: JSON.stringify({ tenant, args }) }),
-  ask: (tenant: string, question: string, conversation_id?: string | null) =>
-    call<AgentResult>("/api/ask", { method: "POST", body: JSON.stringify({ tenant, question, conversation_id: conversation_id ?? null }) }),
+  ask: (tenant: string, question: string, conversation_id?: string | null, run_id?: string) =>
+    call<AgentResult>("/api/ask", { method: "POST", body: JSON.stringify({ tenant, question, conversation_id: conversation_id ?? null, run_id: run_id ?? null }) }),
+  askProgress: (run_id: string) => call<AskProgress>(`/api/ask/progress/${encodeURIComponent(run_id)}`),
   conversations: (tenant: string) =>
     call<ConversationInfo[]>(`/api/conversations?tenant=${encodeURIComponent(tenant)}`),
   conversation: (tenant: string, id: string) =>

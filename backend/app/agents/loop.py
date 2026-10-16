@@ -15,6 +15,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -81,12 +82,13 @@ def mcp_tools(tools) -> list[dict]:
             for t in sorted(tools, key=lambda t: t.name)]
 
 
-async def _run_with(provider, session, tools, question, tenant, system, history, max_turns) -> AgentResult:
+async def _run_with(provider, session, tools, question, tenant, system, history, max_turns, progress) -> AgentResult:
     result = AgentResult(question=question, tenant=tenant, answer="", model=provider.name)
     messages = list(history or []) + [provider.user(question)]
     # what the answer may cite: ids the user gave (question + earlier turns) and ids any tool returned this run
     result._evidence = evidence_ids(question + " " + " ".join(str(m.get("content", "")) for m in history or []))
-    for _ in range(max_turns):
+    for n in range(max_turns):
+        progress(f"{provider.name}: thinking" + (f" (round {n + 1})" if n else ""))
         turn = await provider.turn(system, messages, tools)
         result.model = turn.model or result.model
         result.tokens += getattr(turn, "tokens", 0) or 0
@@ -99,6 +101,7 @@ async def _run_with(provider, session, tools, question, tenant, system, history,
             if call.args is None:
                 text, is_error, sc, ms = f"Invalid JSON arguments: {call.raw_args[:200]}", True, {}, 0
             else:
+                progress(f"{provider.name}: calling {call.name} over MCP")
                 t0 = time.perf_counter()
                 res = await session.call_tool(call.name, call.args)
                 ms = int((time.perf_counter() - t0) * 1000)
@@ -171,21 +174,27 @@ def history_messages(tenant: str, conversation_id: str | None) -> list[dict]:
 
 async def run_agent(question: str, tenant: str, system: str, history: list | None = None,
                     providers: list | None = None, max_turns: int = 10, conversation_id: str | None = None,
-                    user_id: str = "user:demo", agent: str = "agent:triage", persist: bool = True) -> AgentResult:
-    providers = providers if providers is not None else [make(n) for n in provider_order()]
+                    user_id: str = "user:demo", agent: str = "agent:triage", persist: bool = True,
+                    max_wait: float = 30.0, progress: Callable[[str], None] | None = None) -> AgentResult:
+    """max_wait: longest rate-limit wait per model call before falling back (the UI uses 0).
+    progress: called with short status lines (provider tried, tool called, fallbacks) for a live status display."""
+    progress = progress or (lambda _msg: None)
+    providers = providers if providers is not None else [make(n, max_wait=max_wait) for n in provider_order()]
     if history is None:
         history = history_messages(tenant, conversation_id)
     failed: list[str] = []
     result = None
     async with stdio_client(server_params(tenant, agent)) as (read, write):
         async with ClientSession(read, write) as session:
+            progress("starting the MCP server and listing tools")
             await session.initialize()
             tools = mcp_tools((await session.list_tools()).tools)
             for provider in providers:
                 try:
-                    result = await _run_with(provider, session, tools, question, tenant, system, history, max_turns)
+                    result = await _run_with(provider, session, tools, question, tenant, system, history, max_turns, progress)
                 except ProviderUnavailable as exc:
                     failed.append(str(exc)[:300])
+                    progress(f"{provider.name} unavailable ({_reason(exc)}), falling back")
                     continue
                 break
     for provider in providers:  # release HTTP clients while the event loop is still running
@@ -194,10 +203,22 @@ async def run_agent(question: str, tenant: str, system: str, history: list | Non
             await close()
     result = result or AgentResult(question=question, tenant=tenant, answer="No provider could answer.")
     result.fallbacks = failed
+    progress("checking every cited id against the graph")
     result.verification = verify(get_graph(tenant), result.answer, getattr(result, "_evidence", set()))
     if persist:
         _persist(tenant, agent, user_id, conversation_id, result)
     return result
+
+
+def _reason(exc: Exception) -> str:
+    """Short human reason for a provider failure: 'rate limited', 'quota exhausted', 'timeout', ..."""
+    text = str(exc).lower()
+    for needle, reason in (("quota", "quota exhausted"), ("429", "rate limited"), ("rate", "rate limited"),
+                           ("413", "request too large"), ("timeout", "timed out"), ("timed out", "timed out"),
+                           ("connection", "unreachable"), ("401", "bad key"), ("403", "forbidden")):
+        if needle in text:
+            return reason
+    return "error"
 
 
 def print_result(r: AgentResult) -> None:

@@ -1,6 +1,7 @@
 "use client";
 
-import type { Step, Track, Verification } from "@/lib/api";
+import { useEffect, useState } from "react";
+import type { ProgressEvent, Step, Track, Verification } from "@/lib/api";
 import { SourceChips, TrackBadges } from "./Badges";
 
 export interface Entry {
@@ -15,6 +16,44 @@ export interface Entry {
   model?: string;
   memory?: string; // conversation / episode written for this answer
   verification?: Verification;
+  startedAt?: number; // Date.now() when the request was sent, for the live elapsed counter
+  progress?: ProgressEvent[]; // live status lines from the backend while an agent answer is pending
+}
+
+const PENDING_LABEL: Record<Entry["mode"], string> = {
+  agent: "Agent is working",
+  tool: "Running the tool on the graph",
+  ingest: "Extracting facts and merging them into the graph",
+};
+
+/** Spinner, live elapsed seconds, the current step, and the trail of what was tried (providers, tools, fallbacks). */
+function PendingStatus({ entry }: { entry: Entry }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const started = entry.startedAt ?? Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 250);
+    return () => clearInterval(timer);
+  }, [entry.startedAt]);
+  const events = entry.progress ?? [];
+  const current = events.at(-1)?.msg;
+  return (
+    <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
+      <div className="flex items-center gap-2">
+        <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-700" />
+        <span className="font-semibold">{PENDING_LABEL[entry.mode]}…</span>
+        <span className="ml-auto tabular-nums text-blue-700">{elapsed}s</span>
+      </div>
+      {current && <p className="mt-1.5 font-medium">{current}</p>}
+      {events.length > 1 && (
+        <ol className="mt-1 space-y-0.5 text-[11px] text-blue-700/80">
+          {events.slice(0, -1).map((e, i) => <li key={i}><span className="tabular-nums">{e.t.toFixed(1)}s</span> · {e.msg}</li>)}
+        </ol>
+      )}
+      {entry.mode === "agent" && elapsed >= 8 && (
+        <p className="mt-1.5 text-[11px] text-blue-700/80">Free-tier models can be slow or rate limited; Triveni falls back to the next provider, then to rules mode.</p>
+      )}
+    </div>
+  );
 }
 
 const VERDICT: Record<string, string> = {
@@ -60,7 +99,7 @@ export default function EntryCard({ entry, active, onSelect, onCypher, onDoc }: 
         <TrackBadges tracks={entryTracks(entry)} />
       </div>
 
-      {entry.pending && <p className="mt-2 animate-pulse text-xs text-gray-500">Traversing the graph…</p>}
+      {entry.pending && <PendingStatus entry={entry} />}
       {entry.error && <p className="mt-2 rounded bg-red-50 p-2 text-xs text-red-700">{entry.error}</p>}
       {entry.answer && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{entry.answer}</p>}
       {entry.verification && <ProofBadge v={entry.verification} />}
