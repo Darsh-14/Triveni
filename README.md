@@ -49,10 +49,10 @@ _TODO: diagram + node/edge tables._
 ## Track 03: Company Brain
 | Key focus | Feature |
 |---|---|
-| Knowledge from docs, tickets, chats in one graph | _TODO_ |
-| Who owns what, who knows what | _TODO_ |
+| Knowledge from docs, tickets, chats in one graph | `ingest_document`: LLM extraction into the fixed schema (unknown types impossible by output schema, invalid endpoints rejected), MERGE with `source_doc` on every edge (`backend/app/ingest/`) |
+| Who owns what, who knows what | `owner_of` (current owner + on-call with sources, optional history) |
 | Tracing decisions to source | _TODO_ |
-| Keeping knowledge current | Temporal State edges (`valid_from`/`valid_to`, `source_doc`) |
+| Keeping knowledge current | Temporal State edges (`valid_from`/`valid_to`/`ended_by`): a contradicting fact closes the old edge and creates the new one; history is never deleted (`ingest/temporal.py`) |
 | Answers with clear sources | _TODO_ |
 
 ## Cypher and algorithms used

@@ -71,3 +71,26 @@ RETURN s.id, owners, collect({id: p.id, name: p.name, source: c.source_doc, sinc
 MATCH (x)-[r:OWNS|ON_CALL_FOR]->(s:Service {name: $service})
 RETURN type(r), x.id, x.name, r.valid_from, r.valid_to, r.source_doc ORDER BY r.valid_from
 ```
+
+### Ingestion: merge + temporal currency **[03]**
+`backend/app/ingest/merge.py`, `temporal.py`, called by `pipeline.ingest()` and the `ingest_document` tool. Labels/types are interpolated only after `schema.validate_*` accepts them.
+```cypher
+-- known entities shown to the extractor and used for resolution
+MATCH (n) WHERE n:Person OR n:Team OR n:Service OR n:Incident OR n:Decision
+RETURN labels(n)[0], n.id, coalesce(n.name, n.title)
+-- the document itself, and its links
+MERGE (d:Document {id: $props.id}) SET d += $props
+MATCH (p:Person {id: $p}), (d:Document {id: $d}) MERGE (p)-[r:WROTE]->(d) ON CREATE SET r.source_doc = $d
+MATCH (d:Document {id: $d}), (n:<Label> {id: $n}) MERGE (d)-[r:MENTIONS]->(n) ON CREATE SET r.source_doc = $d
+MATCH (d:Document {id: $d}), (n:<Incident|Decision> {id: $n}) MERGE (d)-[r:EVIDENCE_FOR]->(n) ON CREATE SET r.source_doc = $d
+-- Event facts: idempotent
+MATCH (a:<Src> {id: $src}), (b:<Dst> {id: $dst}) MERGE (a)-[r:<EVENT>]->(b) ON CREATE SET r.source_doc = $doc
+-- State facts (temporal.assert_state): 1) same fact current? 2) close conflicting current edges 3) create
+MATCH (a:<Src> {id: $src})-[r:<STATE>]->(b:<Dst> {id: $dst}) WHERE r.valid_to IS NULL RETURN count(r)
+MATCH (x:Team)-[r:OWNS]->(b:Service {id: $dst}) WHERE r.valid_to IS NULL AND x.id <> $src
+SET r.valid_to = $ts, r.ended_by = $doc RETURN x.id                       -- OWNS / ON_CALL_FOR: one per service
+MATCH (a:Person {id: $src})-[r:MEMBER_OF]->(y:Team) WHERE r.valid_to IS NULL AND y.id <> $dst
+SET r.valid_to = $ts, r.ended_by = $doc RETURN y.id                       -- MEMBER_OF: one team per person
+MATCH (a:<Src> {id: $src}), (b:<Dst> {id: $dst}) CREATE (a)-[:<STATE> {valid_from: $ts, source_doc: $doc}]->(b)
+```
+After every ingest, the Derived projections are rebuilt (see above) so expertise, responsibility and orphans reflect the new facts.
