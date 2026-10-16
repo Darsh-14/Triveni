@@ -192,6 +192,27 @@ def test_all_models_down_uses_rules(loaded):
     assert r.answer.startswith("Rules mode") and "Page Arjun Mehta" in r.answer
 
 
+def test_request_too_large_falls_back(loaded):
+    import httpx
+    import openai
+
+    too_large = openai.APIStatusError("Request too large (ITPM)", body=None,
+                                      response=httpx.Response(413, request=httpx.Request("POST", "http://x")))
+    groq = OpenAICompatProvider("groq", client=ScriptedOpenAI([too_large]), model="m")
+    gemini = OpenAICompatProvider("gemini", client=ScriptedOpenAI([_oa("ok via gemini", model="g")]), model="m")
+    r = anyio.run(lambda: run_agent("hello", "test_acme", SYSTEM, persist=False, providers=[groq, gemini]))
+    assert r.model == "gemini:g" and r.fallbacks[0].startswith("groq: APIStatusError")
+
+
+def test_large_tool_results_are_cut_for_the_model():
+    from backend.app.agents.loop import MAX_RESULT_CHARS, for_model
+
+    big = {"explanation": "e", "sources": ["doc:x"], "data": {"rows": ["x" * 100] * 200}, "cypher": "MATCH"}
+    out = for_model(big)
+    assert len(out) <= MAX_RESULT_CHARS + 100 and "truncated" in out and "MATCH" not in out
+    assert for_model({"explanation": "small", "data": {}, "sources": []}) == '{"explanation": "small", "data": {}, "sources": []}'
+
+
 @pytest.mark.parametrize("question,plan", [
     ("payments-api is failing, what's affected?", ["blast_radius", "similar_incidents", "recall"]),
     ("Can we change the retry policy on orders-api?", ["decision_trail"]),

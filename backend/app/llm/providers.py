@@ -72,8 +72,7 @@ class OpenAICompatProvider:
                 messages=[{"role": "system", "content": system}, *messages],
                 tools=self.tool_defs(tools), tool_choice="auto",
             )
-        except (openai.RateLimitError, openai.AuthenticationError, openai.PermissionDeniedError,
-                openai.APIConnectionError, openai.InternalServerError, openai.NotFoundError) as exc:
+        except (openai.APIStatusError, openai.APIConnectionError) as exc:  # 413/429/5xx/auth/timeouts: try the next provider
             raise ProviderUnavailable(f"{self.name}: {type(exc).__name__}: {exc}") from exc
         msg = resp.choices[0].message
         calls = []
@@ -105,8 +104,7 @@ class OpenAICompatProvider:
                 model=self.model, temperature=0.1, response_format={"type": "json_object"},
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             )
-        except (openai.RateLimitError, openai.AuthenticationError, openai.PermissionDeniedError,
-                openai.APIConnectionError, openai.InternalServerError, openai.NotFoundError) as exc:
+        except (openai.APIStatusError, openai.APIConnectionError) as exc:  # 413/429/5xx/auth/timeouts: try the next provider
             raise ProviderUnavailable(f"{self.name}: {type(exc).__name__}: {exc}") from exc
         return resp.choices[0].message.content or "", f"{self.name}:{resp.model}"
 

@@ -98,9 +98,7 @@ async def _run_with(provider, session, tools, question, tenant, system, history,
                 is_error, sc = bool(res.is_error), res.structured_content or {}
                 text = res.content[0].text if res.content else ""
                 if sc and not is_error:
-                    # The model gets the answer and its sources; the UI keeps the full provenance (cypher,
-                    # params, paths) from structured_content. Smaller prompts: faster, fewer rate limits.
-                    text = json.dumps({k: sc.get(k) for k in ("explanation", "data", "sources")}, default=str)
+                    text = for_model(sc)
             result.steps.append(Step(
                 tool=call.name, input=call.args or {}, why=turn.text, ok=not is_error,
                 explanation=sc.get("explanation", text if is_error else ""), tracks=sc.get("tracks", []),
@@ -113,6 +111,19 @@ async def _run_with(provider, session, tools, question, tenant, system, history,
 
 
 MEMORY_PREFIXES = ("svc:", "inc:", "per:")
+MAX_RESULT_CHARS = 2500  # per tool result sent to the model (~600 tokens); free tiers cap input tokens per minute
+MAX_HISTORY = 8          # earlier messages of the conversation sent to the model
+
+
+def for_model(sc: dict) -> str:
+    """What the model sees of a tool result: explanation, data, sources. The UI keeps the full provenance
+    (cypher, params, paths) from structured_content. Large data is cut, and the cut is marked."""
+    text = json.dumps({k: sc.get(k) for k in ("explanation", "data", "sources")}, default=str)
+    if len(text) <= MAX_RESULT_CHARS:
+        return text
+    data = json.dumps(sc.get("data"), default=str)[: MAX_RESULT_CHARS - 600]
+    return json.dumps({"explanation": sc.get("explanation"), "sources": sc.get("sources"),
+                       "data_truncated": data + " ...(truncated; ask a narrower question for more)"})
 
 
 def _involved(result: AgentResult) -> list[str]:
@@ -144,8 +155,9 @@ def history_messages(tenant: str, conversation_id: str | None) -> list[dict]:
     """Rebuild the model's context from the graph (text turns only; tool traces are in the episodes)."""
     if not conversation_id:
         return []
-    return [{"role": m["role"], "content": m["text"]} for m in load_history(get_graph(tenant), conversation_id)
-            if m["role"] in ("user", "assistant") and m["text"]]
+    messages = [{"role": m["role"], "content": m["text"]} for m in load_history(get_graph(tenant), conversation_id)
+                if m["role"] in ("user", "assistant") and m["text"]]
+    return messages[-MAX_HISTORY:]
 
 
 async def run_agent(question: str, tenant: str, system: str, history: list | None = None,

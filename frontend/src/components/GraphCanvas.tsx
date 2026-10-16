@@ -56,7 +56,6 @@ export default function GraphCanvas({ nodes, edges, highlight, onSelect }: Props
       cy.current = cytoscape({
         container: container.current,
         elements,
-        wheelSensitivity: 0.3,
         minZoom: 0.2,
         maxZoom: 1.6, // small evidence graphs would otherwise be blown up to fill the canvas
         style: [
