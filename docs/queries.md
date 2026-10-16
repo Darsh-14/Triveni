@@ -376,3 +376,26 @@ RETURN a.id, a.kind, a.args
 
 MATCH (a:Action {id: $id, status: 'approved'}) SET a.status = 'executed', a.executed_ts = $ts, a.outbox = $file RETURN a.id
 ```
+
+### team_services **[03]**
+`backend/app/tools/team_services.py`. Added when the eval showed no tool could answer "which runbooks are stale for the services Team Atlas owns". Current OWNS edges only, with each service's stale runbooks.
+```cypher
+MATCH (t:Team)-[o:OWNS]->(s:Service) WHERE (t.id = $team OR toLower(t.name) = toLower($team)) AND o.valid_to IS NULL
+OPTIONAL MATCH (p:Person)-[c:ON_CALL_FOR]->(s) WHERE c.valid_to IS NULL
+RETURN t.id, t.name, s.id, s.name, o.valid_from, o.source_doc, p.id, p.name
+ORDER BY s.name
+
+MATCH (doc:Document {kind: 'runbook'})-[:MENTIONS]->(old:Decision)-[:GOVERNS]->(s:Service) WHERE s.id IN $ids
+MATCH (newer:Decision)-[:SUPERSEDES]->(old)
+RETURN s.id, doc.id, doc.title, old.id, newer.id
+```
+
+### list_handoffs **[02]**
+`backend/app/tools/list_handoffs.py`. Added when the eval showed agents could create and claim handoffs but not list them.
+```cypher
+MATCH (src:Agent)-[:CREATED]->(h:Handoff)-[:TO]->(dst:Agent)
+OPTIONAL MATCH (h)-[:ABOUT]->(i:Incident)
+RETURN h.id, h.ts, h.status, h.payload, src.id, dst.id, i.id, h.claimed_by, h.result
+ORDER BY h.ts DESC
+LIMIT $limit
+```
