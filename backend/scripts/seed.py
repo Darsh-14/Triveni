@@ -90,8 +90,25 @@ def make_people(rng, data, teams, sizes, named, first, last) -> dict[str, list[s
 
 
 def registry_docs(data, teams, members, oncall) -> None:
-    """Service catalog, org chart and on-call schedule: the cited source of baseline State facts."""
-    catalog = "\n".join(f"{svc}: owned by Team {name}" for t, (name, svcs) in teams.items() for svc in svcs)
+    """Service catalog, org chart, on-call schedule and deploy log: the cited source of baseline facts.
+    Their text states every fact they are cited for (owners, dependencies, members, on-call, deployments)."""
+    owner_of = {svc: name for _, (name, svcs) in teams.items() for svc in svcs}
+    deps = defaultdict(list)
+    for rel, src, dst, _ in data.edges:
+        if rel == "DEPENDS_ON":
+            deps[src].append(dst[4:])
+    catalog = "\n".join(
+        f"{sid[4:]}: " + (f"owned by Team {owner_of[sid[4:]]}" if sid[4:] in owner_of else "no owning team")
+        + (f"; depends on {', '.join(sorted(deps[sid]))}" if deps[sid] else "; no dependencies")
+        for sid in sorted(data.ids("Service")))
+    if "doc:deploy-log" in data.nodes:
+        authored = {dst: src for rel, src, dst, _ in data.edges if rel == "AUTHORED"}
+        lines = []
+        for dep_id in sorted(data.ids("Deployment"), key=lambda d: data.nodes[d][1]["ts"]):
+            props = data.nodes[dep_id][1]
+            svc, author = dep_id[4:].split("@")[0], data.nodes[authored[dep_id]][1]["name"]
+            lines.append(f"{props['ts']} {svc} {props['version']} deployed by {author} ({props['status']})")
+        data.nodes["doc:deploy-log"][1]["text"] = "Deployment history exported from CI.\n" + "\n".join(lines)
     org = "\n".join(f"{data.nodes[p][1]['name']}: Team {teams[t][0]}" for t, ps in members.items() for p in ps)
     sched = "\n".join(f"{s[4:]}: {data.nodes[p][1]['name']}" for s, p in oncall.items())
     data.node("Document", id="doc:service-catalog", title="Service catalog", kind="registry", text=catalog, ts=N.BASE_TS, source="seed")
