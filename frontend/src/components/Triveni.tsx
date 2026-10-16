@@ -16,8 +16,8 @@ const SCENARIOS: { n: number; label: string; question: string; tool?: [string, R
     tool: ["decision_trail", { service: "orders-api", action: "change_retry_policy" }] },
   { n: 3, label: "Who is on call for billing-batch?", question: "Who is on call for billing-batch?",
     tool: ["why_not", { kind: "on_call", service: "billing-batch" }] },
-  { n: 4, label: "Who knows payments-api?", question: "Who knows payments-api best, and why?",
-    tool: ["who_knows", { service: "payments-api" }] },
+  { n: 4, label: "Single points of knowledge?", question: "Which engineers are single points of knowledge?",
+    tool: ["key_people", {}] },
   { n: 7, label: "Ingest: billing-batch moves to Atlas", question: "Ingest #eng-announcements: billing-batch moves to Team Atlas",
     ingest: "data/raw/live/chat-billing-move.md" },
 ];

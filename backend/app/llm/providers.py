@@ -183,6 +183,12 @@ class RulesProvider:
         if len(ids) >= 2 or (re.search(r"\b(connected|path|between|link)\b", q) and len(ids + services) >= 2):
             a, b = (ids + services)[:2]
             return [("shortest_path", {"from": a, "to": b, "mode": "any" if ":" in a + b else "dependency"})]
+        if re.search(r"single points? of (knowledge|failure)|key people|bus factor|knowledge silo", q):
+            return [("key_people", {})]
+        if re.search(r"orphan|unowned|no owner|nobody owns", q):
+            return [("find_orphans", {})]
+        if re.search(r"most (critical|important)|critical services", q):
+            return [("critical_services", {})]
         if not svc:
             return []
         if re.search(r"\b(retry|change|modify|allowed|can we|decision|adr)\b", q):

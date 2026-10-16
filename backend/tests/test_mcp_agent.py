@@ -199,6 +199,9 @@ def test_all_models_down_uses_rules(loaded):
     ("Who knows payments-api best?", ["who_knows"]),
     ("Who owns billing-batch now?", ["owner_of"]),
     ("How is per:priya-nair connected to svc:billing-batch?", ["shortest_path"]),
+    ("Which engineers are single points of knowledge?", ["key_people"]),
+    ("Which services are orphaned?", ["find_orphans"]),
+    ("What are our most critical services?", ["critical_services"]),
     ("hello", []),
 ])
 def test_rules_planner(question, plan):

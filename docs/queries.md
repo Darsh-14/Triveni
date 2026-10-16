@@ -199,3 +199,54 @@ MATCH p=(a {id: $from})-[:MEMBER_OF|OWNS|ON_CALL_FOR|DEPENDS_ON|AUTHORED|DEPLOYE
 WITH p ORDER BY length(p) LIMIT 1 
 RETURN [n IN nodes(p) | n.id], [r IN relationships(p) | type(r)], [r IN relationships(p) | startNode(r).id], [r IN relationships(p) | r.valid_to]
 ```
+
+## Track 01: algorithms as tools
+
+All three read only current facts. PageRank reads DEPENDS_ON, which is never ended in our data, and the tool warns if that ever changes. Betweenness and WCC read the Derived projections, which are rebuilt from current edges after every seed and ingest.
+
+### critical_services: PageRank **[01]**
+`backend/app/tools/critical_services.py`. `algo.pageRank(label, relType)` takes one label and one type. A service scores high when many services, especially critical ones, depend on it. The top 3 matches a pure-Python power iteration (damping 0.85) used as ground truth.
+```cypher
+CALL algo.pageRank('Service', 'DEPENDS_ON') YIELD node, score
+RETURN node.id, node.name, node.tier, score
+ORDER BY score DESC, node.id
+LIMIT 5
+
+MATCH (s:Service) WHERE s.id IN $ids
+OPTIONAL MATCH (t:Team)-[o:OWNS]->(s) WHERE o.valid_to IS NULL
+OPTIONAL MATCH (d:Service)-[r:DEPENDS_ON]->(s) WHERE r.valid_to IS NULL
+RETURN s.id, t.id, t.name, collect(DISTINCT d.id)
+```
+
+### key_people: betweenness **[01] [03]**
+`backend/app/tools/key_people.py`. Runs on the expertise projection (KNOWS/KNOWN_BY). **FalkorDB samples source nodes with replacement** (measured on Cloud): with `samplingSize` = node count, scores matched no exact networkx variant and changed with the seed. From about 2,000 samples the top-2 set is stable across seeds and equals networkx's exact answer, so the tool uses `max(2000, 20 × nodes)` samples with seed 42 (0.03 s) and labels the scores as estimates.
+```cypher
+CALL algo.betweenness({nodeLabels: ['Person', 'Service'], relationshipTypes: ['KNOWS', 'KNOWN_BY'],
+                       samplingSize: $samples, samplingSeed: $seed})
+YIELD node, score
+WITH node, score WHERE node:Person AND score > 0
+RETURN node.id, node.name, score
+ORDER BY score DESC, node.id
+LIMIT 5
+
+MATCH (p:Person)-[k:KNOWS]->(s:Service) WHERE p.id IN $ids
+OPTIONAL MATCH (t:Team)-[o:OWNS]->(s) WHERE o.valid_to IS NULL
+OPTIONAL MATCH (p)-[m:MEMBER_OF]->(home:Team) WHERE m.valid_to IS NULL
+RETURN p.id, home.name, s.id, s.name, t.name, k.weight
+```
+
+### find_orphans: weakly connected components **[01] [03]**
+`backend/app/tools/find_orphans.py`. `algo.WCC` on RESPONSIBLE_FOR (current OWNS + ON_CALL_FOR). A component holding a single Service is a service nobody is responsible for. Isolated nodes get their own component, verified on Cloud.
+```cypher
+CALL algo.WCC({nodeLabels: ['Team', 'Person', 'Service'], relationshipTypes: ['RESPONSIBLE_FOR']})
+YIELD node, componentId
+WITH componentId, collect(node) AS members
+WITH componentId, members, size(members) AS n
+RETURN componentId, n, [m IN members WHERE m:Service | m.id] AS services
+
+MATCH (s:Service) WHERE s.id IN $ids
+OPTIONAL MATCH (d:Service)-[r:DEPENDS_ON]->(s) WHERE r.valid_to IS NULL
+OPTIONAL MATCH (p:Person)-[k:KNOWS]->(s)
+OPTIONAL MATCH (x)-[old:OWNS|ON_CALL_FOR]->(s) WHERE old.valid_to IS NOT NULL
+RETURN s.id, s.name, s.tier, collect(DISTINCT d.id), collect(DISTINCT p.name), collect(DISTINCT x.id)
+```

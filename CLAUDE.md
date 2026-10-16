@@ -93,6 +93,7 @@ Each tool result also carries `tracks: ["01","03"]` and `sources: [document ids]
 - Path multiplicity: if a multi-hop pattern's middle node is not used after MATCH, FalkorDB's planner collapses the hops and returns each endpoint pair once. When counts matter, aggregate with `count(*)` or return the middle node (verified Oct 16).
 - FalkorDB `shortestPath()` is directed only (undirected is rejected) and takes no property filters in its pattern; for undirected connections use a bounded var-length MATCH with `WITH p ORDER BY length(p) LIMIT 1` (verified Oct 16).
 - MCP: the `mcp` package is 2.x (`FastMCP` is now `MCPServer`; we use the low-level `Server(on_list_tools=..., on_call_tool=...)` to serve the registry's exact JSON schemas).
+- `algo.betweenness` samples sources with replacement: samplingSize = node count is NOT exact and varies by seed. Use >= 2000 samples with a fixed seed and compare ranks/sets, not scores (verified Oct 16).
 - Read tools run read-only queries. Writes happen only in `remember`, handoff and action code paths.
 
 ### Memory and coordination model (Track 02)
