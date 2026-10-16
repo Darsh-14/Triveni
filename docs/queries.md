@@ -13,3 +13,44 @@ CREATE INDEX FOR (n:<Label>) ON (n.id)      -- every label in schema.NODE_LABELS
 CREATE INDEX FOR (n:<Label>) ON (n.name)    -- Person, Team, Service
 ```
 Issued through `Graph.create_node_range_index(label, prop)`; labels and properties come from `schema.py`, never from input. Every loader MERGE and tool lookup matches on `id` or `name`, so these keep lookups off full label scans.
+
+### Seed loader **[F]**
+`backend/scripts/seed.py` → `load()`. Labels/types are interpolated only after an assert that they are in `schema.py`; all values are parameters.
+```cypher
+UNWIND $rows AS row MERGE (n:<Label> {id: row.id}) SET n += row
+UNWIND $rows AS row MATCH (a:<Src> {id: row.src}) MATCH (b:<Dst> {id: row.dst})
+CREATE (a)-[r:<REL>]->(b) SET r += row.props
+```
+
+### Derived projections **[01] [03]**
+`backend/app/graph/projections.py` → `refresh_projections()`, run after every seed (and, from the ingestion step, after every ingest). Algorithms read these edges because FalkorDB algorithm procedures cannot filter on `valid_to`.
+```cypher
+MATCH ()-[r:KNOWS|KNOWN_BY|RESPONSIBLE_FOR]->() DELETE r
+-- expertise evidence (weight in brackets), summed per (person, service):
+MATCH (p:Person)-[:RESOLVED]->(:Incident)-[:AFFECTED]->(s:Service) RETURN p.id, s.id            -- [3]
+MATCH (p:Person)-[:AUTHORED]->(:Deployment)-[:DEPLOYED_TO]->(s:Service) RETURN p.id, s.id       -- [2]
+MATCH (p:Person)-[:MADE]->(:Decision)-[:GOVERNS]->(s:Service) RETURN p.id, s.id                 -- [2]
+MATCH (p:Person)-[:WROTE]->(:Document)-[:MENTIONS]->(s:Service) RETURN p.id, s.id               -- [1]
+MATCH (p:Person)-[r:ON_CALL_FOR]->(s:Service) WHERE r.valid_to IS NULL RETURN p.id, s.id        -- [1]
+UNWIND $rows AS row MATCH (p:Person {id: row.person}), (s:Service {id: row.service})
+CREATE (p)-[:KNOWS {weight: row.weight, derived: true}]->(s), (s)-[:KNOWN_BY {weight: row.weight, derived: true}]->(p)
+MATCH (t:Team)-[o:OWNS]->(s:Service) WHERE o.valid_to IS NULL CREATE (t)-[:RESPONSIBLE_FOR {derived: true}]->(s)
+MATCH (p:Person)-[o:ON_CALL_FOR]->(s:Service) WHERE o.valid_to IS NULL CREATE (p)-[:RESPONSIBLE_FOR {derived: true}]->(s)
+```
+
+### Needle checks (tests; most become tool queries later) **[01] [02] [03]**
+`backend/tests/test_needles.py`, `test_isolation.py`. Highlights:
+```cypher
+-- blast radius (01): who depends on $svc within 3 hops
+MATCH (d:Service)-[:DEPENDS_ON*1..3]->(s:Service {id: $svc}) RETURN DISTINCT d.id
+-- decision trail with sources (03)
+MATCH (new:Decision)-[:SUPERSEDES]->(old:Decision)-[:GOVERNS]->(s:Service {id: $svc}) MATCH (new)-[:GOVERNS]->(s)
+MATCH (src_new:Document)-[:EVIDENCE_FOR]->(new) MATCH (src_old:Document)-[:EVIDENCE_FOR]->(old)
+RETURN new.id, old.id, new.forbids, src_new.id, src_old.id
+-- stale runbooks (03): runbooks citing a superseded decision
+MATCH (d:Document {kind: 'runbook'})-[:MENTIONS]->(old:Decision)<-[:SUPERSEDES]-(:Decision) RETURN d.id
+-- orphans (01): services with no current owner/on-call
+MATCH (s:Service) OPTIONAL MATCH (s)<-[r:RESPONSIBLE_FOR]-() WITH s, count(r) AS c WHERE c = 0 RETURN s.id
+-- isolation (02): beta-only ids never appear in acme
+MATCH (n) WHERE n.id IN $ids RETURN n.id
+```

@@ -1,0 +1,240 @@
+{
+  "acme": {
+    "counts": {
+      "derived_knows": 104,
+      "edges_by_type": {
+        "AFFECTED": 30,
+        "AUTHORED": 63,
+        "CAUSED_BY": 16,
+        "DEPENDS_ON": 132,
+        "DEPLOYED_TO": 63,
+        "EVIDENCE_FOR": 51,
+        "FOR": 1,
+        "GOVERNS": 17,
+        "HAS_MESSAGE": 4,
+        "INVOLVED": 2,
+        "LEARNED": 1,
+        "MADE": 17,
+        "MEMBER_OF": 60,
+        "MENTIONS": 358,
+        "NEXT": 3,
+        "ON_CALL_FOR": 37,
+        "OWNS": 38,
+        "RAN": 1,
+        "RESOLVED": 34,
+        "SUPERSEDES": 5,
+        "USED": 1,
+        "WITH": 1,
+        "WROTE": 64
+      },
+      "edges_loaded": 999,
+      "nodes": 296,
+      "nodes_by_label": {
+        "Agent": 2,
+        "Conversation": 1,
+        "Decision": 17,
+        "Deployment": 63,
+        "Document": 68,
+        "Episode": 1,
+        "Incident": 30,
+        "Lesson": 1,
+        "Message": 4,
+        "Person": 60,
+        "Procedure": 1,
+        "Service": 40,
+        "Team": 8
+      }
+    },
+    "eval": {
+      "A1": [
+        "svc:cart-api",
+        "svc:checkout-web",
+        "svc:invoice-svc",
+        "svc:orders-api",
+        "svc:refund-worker"
+      ],
+      "A2": [
+        "svc:checkout-web",
+        "svc:cart-api",
+        "svc:orders-api",
+        "svc:payments-api"
+      ],
+      "A3": [
+        "svc:catalog-sync",
+        "svc:referral-svc",
+        "svc:email-sender"
+      ],
+      "A4": [
+        "svc:legacy-fax-gateway",
+        "svc:pdf-renderer-v1"
+      ],
+      "A5": [
+        "adr:019",
+        "blocked"
+      ]
+    },
+    "profile": "acme",
+    "scenario1": {
+      "blast_radius_3": [
+        "svc:cart-api",
+        "svc:checkout-web",
+        "svc:invoice-svc",
+        "svc:orders-api",
+        "svc:refund-worker"
+      ],
+      "last_deploy": "dep:payments-api@2.14.0",
+      "last_deploy_author": "per:kavya-rao",
+      "on_call": "per:arjun-mehta",
+      "owner_team": "team:payments",
+      "postmortem": "doc:pm-0042",
+      "prior_incident": "inc:0042",
+      "prior_incident_cause": "dep:payments-api@2.12.0",
+      "service": "svc:payments-api"
+    },
+    "scenario2": {
+      "action": {
+        "allowed": false,
+        "blocked_by": "adr:019",
+        "kind": "change_retry_policy",
+        "target": "svc:orders-api"
+      },
+      "current_decision": "adr:019",
+      "decision_trail": [
+        "adr:019",
+        "adr:007"
+      ],
+      "service": "svc:orders-api",
+      "sources": [
+        "doc:adr-019",
+        "doc:adr-007"
+      ],
+      "stale_runbooks": [
+        "doc:rb-orders-retry"
+      ]
+    },
+    "scenario3": {
+      "on_call": null,
+      "orphans": [
+        "svc:legacy-fax-gateway",
+        "svc:pdf-renderer-v1"
+      ],
+      "owner_team": "team:ledger",
+      "service": "svc:billing-batch"
+    },
+    "scenario4": {
+      "key_people_top2": [
+        "per:dev-malhotra",
+        "per:priya-nair"
+      ]
+    },
+    "scenario5": {
+      "conversation": "conv:0001",
+      "episode": "ep:0001",
+      "lesson": "lesson:pool-exhaustion",
+      "messages": 4,
+      "procedure": "proc:rollback-payments"
+    },
+    "scenario6": {
+      "agents": [
+        "agent:remediation",
+        "agent:triage"
+      ],
+      "handoffs_seeded": 0
+    },
+    "scenario7": {
+      "ingest_doc": "chat:billing-move",
+      "owner_after": "team:atlas",
+      "owner_before": "team:ledger",
+      "service": "svc:billing-batch",
+      "source_before": "doc:service-catalog"
+    },
+    "scenario7b": {
+      "stale_runbooks_after_move": [
+        "doc:rb-billing-rerun"
+      ]
+    },
+    "seed": 42,
+    "stale_runbooks": [
+      "doc:rb-billing-rerun",
+      "doc:rb-orders-retry"
+    ]
+  },
+  "beta": {
+    "counts": {
+      "derived_knows": 30,
+      "edges_by_type": {
+        "AFFECTED": 6,
+        "AUTHORED": 12,
+        "DEPENDS_ON": 9,
+        "DEPLOYED_TO": 12,
+        "EVIDENCE_FOR": 9,
+        "GOVERNS": 3,
+        "INVOLVED": 1,
+        "MADE": 3,
+        "MEMBER_OF": 20,
+        "MENTIONS": 71,
+        "ON_CALL_FOR": 12,
+        "OWNS": 12,
+        "RAN": 1,
+        "RESOLVED": 6,
+        "WROTE": 9
+      },
+      "edges_loaded": 186,
+      "nodes": 72,
+      "nodes_by_label": {
+        "Agent": 2,
+        "Decision": 3,
+        "Deployment": 12,
+        "Document": 13,
+        "Episode": 1,
+        "Incident": 6,
+        "Person": 20,
+        "Service": 12,
+        "Team": 3
+      }
+    },
+    "profile": "beta",
+    "scenario8": {
+      "beta_only_ids": [
+        "adr:b01",
+        "adr:b02",
+        "adr:b03",
+        "ep:b0001",
+        "inc:b001",
+        "inc:b002",
+        "inc:b003",
+        "inc:b004",
+        "inc:b005",
+        "inc:b006",
+        "per:astrid-nyberg",
+        "per:bjorn-lind",
+        "per:carla-dahl",
+        "per:diego-dahl",
+        "per:emma-moreno",
+        "per:felix-andersen",
+        "per:greta-lind",
+        "per:greta-nyberg",
+        "per:hugo-berg",
+        "per:ines-rossi",
+        "per:jonas-dahl",
+        "per:lars-eriksen",
+        "per:marta-costa",
+        "per:marta-hansen",
+        "per:marta-rossi",
+        "per:olga-dahl",
+        "per:pablo-berg",
+        "per:pablo-hansen",
+        "per:ulla-dahl",
+        "per:ulla-hansen",
+        "team:core",
+        "team:data",
+        "team:web"
+      ],
+      "episode": "ep:b0001",
+      "on_call": "per:lars-eriksen",
+      "owner_team": "team:core",
+      "service": "svc:payments-api"
+    },
+    "seed": 7
+  }
+}
