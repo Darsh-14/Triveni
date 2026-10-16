@@ -21,6 +21,8 @@ cp .env.example .env
 python -m backend.scripts.seed --tenant acme --seed 42
 python -m backend.scripts.seed --tenant beta --seed 7
 pytest -q
+uvicorn backend.app.main:app --reload            # API on :8000
+npm --prefix frontend install && npm --prefix frontend run dev   # UI on :3001
 python -m backend.app.agents.triage "payments-api is failing, what's affected and who do I page?" --tenant acme
 ```
 

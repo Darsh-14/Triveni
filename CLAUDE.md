@@ -61,7 +61,7 @@ python -m backend.app.agents.triage "<question>" --tenant acme
 python -m backend.app.ingest.pipeline data/raw/*.md --tenant acme
 pytest -q
 python -m backend.scripts.eval --out docs/eval.md
-npm --prefix frontend run dev
+npm --prefix frontend run dev                               # UI on http://localhost:3001
 ```
 
 ## Core contracts
