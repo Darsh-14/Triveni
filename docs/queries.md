@@ -94,3 +94,82 @@ SET r.valid_to = $ts, r.ended_by = $doc RETURN y.id                       -- MEM
 MATCH (a:<Src> {id: $src}), (b:<Dst> {id: $dst}) CREATE (a)-[:<STATE> {valid_from: $ts, source_doc: $doc}]->(b)
 ```
 After every ingest, the Derived projections are rebuilt (see above) so expertise, responsibility and orphans reflect the new facts.
+
+### who_knows **[03]**
+`backend/app/tools/who_knows.py`. Ranks by the derived KNOWS weight, then returns every evidence path. The evidence query returns the middle node, so each path is its own row. `LIMIT` is a validated integer (1–20).
+```cypher
+MATCH (p:Person)-[k:KNOWS]->(s:Service {name: $service})
+OPTIONAL MATCH (p)-[m:MEMBER_OF]->(t:Team) WHERE m.valid_to IS NULL
+RETURN p.id, p.name, t.name, k.weight
+ORDER BY k.weight DESC, p.id
+LIMIT 5
+
+MATCH (p:Person)-[r:RESOLVED]->(x:Incident)-[:AFFECTED]->(s:Service {name: $service}) WHERE p.id IN $people
+RETURN p.id AS person, 'RESOLVED' AS rel, x.id AS via, x.title AS what, r.source_doc AS source, s.id AS service
+UNION ALL
+MATCH (p:Person)-[r:AUTHORED]->(x:Deployment)-[:DEPLOYED_TO]->(s:Service {name: $service}) WHERE p.id IN $people
+RETURN p.id AS person, 'AUTHORED' AS rel, x.id AS via, x.version AS what, r.source_doc AS source, s.id AS service
+UNION ALL
+MATCH (p:Person)-[r:MADE]->(x:Decision)-[:GOVERNS]->(s:Service {name: $service}) WHERE p.id IN $people
+RETURN p.id AS person, 'MADE' AS rel, x.id AS via, x.title AS what, r.source_doc AS source, s.id AS service
+UNION ALL
+MATCH (p:Person)-[:WROTE]->(x:Document)-[:MENTIONS]->(s:Service {name: $service}) WHERE p.id IN $people
+RETURN p.id AS person, 'WROTE' AS rel, x.id AS via, x.title AS what, x.id AS source, s.id AS service
+UNION ALL
+MATCH (p:Person)-[r:ON_CALL_FOR]->(s:Service {name: $service}) WHERE p.id IN $people AND r.valid_to IS NULL
+RETURN p.id AS person, 'ON_CALL_FOR' AS rel, s.id AS via, s.name AS what, r.source_doc AS source, s.id AS service
+```
+
+### decision_trail **[03] [01]**
+`backend/app/tools/decision_trail.py`. A decision is current if nothing SUPERSEDES it. The chain is walked newer → older. `action_gate()` blocks an action when a current governing decision lists it in `forbids` (Scenario 2, and the gate for Track 01 actions).
+```cypher
+MATCH (d:Decision)-[:GOVERNS]->(s:Service {name: $service})
+OPTIONAL MATCH (newer:Decision)-[:SUPERSEDES]->(d)
+OPTIONAL MATCH (doc:Document)-[:EVIDENCE_FOR]->(d)
+OPTIONAL MATCH (maker:Person)-[:MADE]->(d)
+RETURN d.id, d.title, d.ts, d.status, d.forbids, d.rationale, s.id,
+       collect(DISTINCT newer.id), collect(DISTINCT doc.id), collect(DISTINCT maker.name)
+ORDER BY d.ts DESC
+
+MATCH (doc:Document {kind: 'runbook'})-[:MENTIONS]->(old:Decision)-[:GOVERNS]->(s:Service {name: $service})
+MATCH (newer:Decision)-[:SUPERSEDES]->(old)
+RETURN doc.id, doc.title, doc.ts, old.id, newer.id
+```
+
+### similar_incidents **[03] [02]**
+`backend/app/tools/similar_incidents.py`. Same service first (hops 0), then incidents on direct DEPENDS_ON neighbours in either direction (hops 1).
+```cypher
+MATCH (i:Incident {id: $incident})-[:AFFECTED]->(s:Service) RETURN s.name
+
+MATCH (i:Incident)-[:AFFECTED]->(s:Service {name: $service})
+RETURN i.id AS id, i.title AS title, i.ts_open AS ts, s.id AS via, 0 AS hops
+UNION
+MATCH (i:Incident)-[:AFFECTED]->(t:Service)-[d:DEPENDS_ON]-(s:Service {name: $service}) WHERE d.valid_to IS NULL
+RETURN i.id AS id, i.title AS title, i.ts_open AS ts, t.id AS via, 1 AS hops
+
+MATCH (i:Incident) WHERE i.id IN $ids
+OPTIONAL MATCH (p:Person)-[:RESOLVED]->(i)
+OPTIONAL MATCH (doc:Document {kind: 'postmortem'})-[:EVIDENCE_FOR]->(i)
+OPTIONAL MATCH (i)-[:CAUSED_BY]->(dep:Deployment)
+RETURN i.id, i.summary, i.ts_close, collect(DISTINCT p.id), collect(DISTINCT doc.id), collect(DISTINCT dep.id)
+```
+
+### why_not: absence proof **[03] [01]**
+`backend/app/tools/why_not.py`. Returns the exact pattern checked, whether it matched, and the context: past edges and what ended them, the owning team, and who knows the service. Depth for `depends` is validated against {1,2,3,4} and interpolated.
+```cypher
+MATCH (p:Person)-[r:ON_CALL_FOR]->(s:Service {name: $service}) WHERE r.valid_to IS NULL RETURN p.id
+
+MATCH (t:Team)-[r:OWNS]->(s:Service {name: $service}) WHERE r.valid_to IS NULL RETURN t.id
+
+MATCH p=(a:Service {name: $from})-[:DEPENDS_ON*1..4]->(b:Service {name: $to}) RETURN [n IN nodes(p) | n.id] LIMIT 1
+
+MATCH (x)-[r:ON_CALL_FOR]->(s:Service {name: $service}) WHERE r.valid_to IS NOT NULL
+RETURN x.id, r.valid_from, r.valid_to, r.source_doc, r.ended_by
+
+MATCH (t:Team)-[r:OWNS]->(s:Service {name: $service}) WHERE r.valid_to IS NULL
+OPTIONAL MATCH (p:Person)-[m:MEMBER_OF]->(t) WHERE m.valid_to IS NULL
+OPTIONAL MATCH (p)-[k:KNOWS]->(s)
+RETURN t.id, r.source_doc, p.id, p.name, coalesce(k.weight, 0) AS w ORDER BY w DESC, p.id
+
+MATCH (p:Person)-[k:KNOWS]->(s:Service {name: $service}) RETURN p.id, p.name, k.weight ORDER BY k.weight DESC, p.id LIMIT 3
+```
