@@ -29,7 +29,7 @@ def test_mcp_lists_registry_with_exact_schemas(loaded):
     async def go(s):
         return (await s.list_tools()).tools
     tools = anyio.run(_with_session, "test_acme", go)
-    assert {t.name for t in tools} == set(REGISTRY)
+    assert {t.name for t in tools} == set(REGISTRY) - {"claim_handoff", "complete_handoff"}  # code-only tools
     for t in tools:
         assert t.input_schema == REGISTRY[t.name].input_schema
         assert t.annotations.read_only_hint == REGISTRY[t.name].read_only
@@ -95,7 +95,7 @@ def test_agent_selects_tools_over_mcp_and_cites_them(loaded):
     assert r.answer.startswith("Page per:arjun-mehta")
 
     first, second = claude.requests
-    assert {t["name"] for t in first["tools"]} == set(REGISTRY)  # the model saw the MCP tool list
+    assert {t["name"] for t in first["tools"]} == set(REGISTRY) - {"claim_handoff", "complete_handoff"}  # the MCP list
     results = second["messages"][-1]["content"]
     assert [x["tool_use_id"] for x in results] == ["t1", "t2"]  # both results in ONE user message
     assert first["fallbacks"] == "default" and first["output_config"] == {"effort": "medium"}
@@ -145,7 +145,7 @@ def test_openai_compat_provider_over_mcp(loaded):
     assert r.model == "groq:scripted-oa" and r.answer.startswith("Page per:arjun-mehta")
     first, second = oa.requests
     assert first["messages"][0]["role"] == "system" and first["tool_choice"] == "auto"
-    assert {t["function"]["name"] for t in first["tools"]} == set(REGISTRY)
+    assert {t["function"]["name"] for t in first["tools"]} == set(REGISTRY) - {"claim_handoff", "complete_handoff"}
     tool_msgs = [m for m in second["messages"] if m["role"] == "tool"]
     assert [m["tool_call_id"] for m in tool_msgs] == ["c1", "c2"]
     assert all("name" not in m for m in tool_msgs)  # Groq rejects messages[].name

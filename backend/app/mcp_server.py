@@ -19,6 +19,9 @@ from mcp.server.stdio import stdio_server
 from backend.app.graph.tenant import graph_name
 from backend.app.tools import REGISTRY, run_tool
 
+# Called by agent *code* (the remediation worker claims and completes handoffs itself), never offered to a model.
+HIDDEN_FROM_MODELS = {"claim_handoff", "complete_handoff"}
+
 
 def build_server(tenant: str, agent: str = "agent:triage") -> Server:
     graph_name(tenant)  # validates the tenant name before anything else happens
@@ -31,7 +34,7 @@ def build_server(tenant: str, agent: str = "agent:triage") -> Server:
                 input_schema=t.input_schema,
                 annotations=types.ToolAnnotations(read_only_hint=t.read_only, destructive_hint=False),
             )
-            for t in REGISTRY.values()
+            for t in REGISTRY.values() if t.name not in HIDDEN_FROM_MODELS
         ])
 
     async def call_tool(ctx, params: types.CallToolRequestParams) -> types.CallToolResult:

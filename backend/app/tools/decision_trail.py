@@ -1,38 +1,7 @@
 """decision_trail (Track 03): decisions governing a service, their SUPERSEDES chain, sources, stale runbooks,
 and (optionally) whether an action is forbidden by a current decision. Track 01 actions use the same check."""
+from backend.app.actions.gate import GOVERNING, STALE, action_gate, current_decisions
 from backend.app.tools.base import ToolResult, edge_ref, ro, tool
-
-GOVERNING = """
-MATCH (d:Decision)-[:GOVERNS]->(s:Service {name: $service})
-OPTIONAL MATCH (newer:Decision)-[:SUPERSEDES]->(d)
-OPTIONAL MATCH (doc:Document)-[:EVIDENCE_FOR]->(d)
-OPTIONAL MATCH (maker:Person)-[:MADE]->(d)
-RETURN d.id, d.title, d.ts, d.status, d.forbids, d.rationale, s.id,
-       collect(DISTINCT newer.id), collect(DISTINCT doc.id), collect(DISTINCT maker.name)
-ORDER BY d.ts DESC
-"""
-
-STALE = """
-MATCH (doc:Document {kind: 'runbook'})-[:MENTIONS]->(old:Decision)-[:GOVERNS]->(s:Service {name: $service})
-MATCH (newer:Decision)-[:SUPERSEDES]->(old)
-RETURN doc.id, doc.title, doc.ts, old.id, newer.id
-"""
-
-
-def current_decisions(graph, service: str) -> list[dict]:
-    rows = ro(graph, GOVERNING, {"service": service})
-    return [
-        {"id": d, "title": t, "ts": ts, "status": st, "forbids": fb or [], "rationale": ra, "service": svc,
-         "superseded_by": [n for n in newer if n], "sources": [x for x in docs if x], "made_by": [m for m in makers if m]}
-        for d, t, ts, st, fb, ra, svc, newer, docs, makers in rows
-    ]
-
-
-def action_gate(decisions: list[dict], action: str) -> dict:
-    """An action is blocked when a *current* decision governing the target forbids it."""
-    blockers = [d["id"] for d in decisions if not d["superseded_by"] and action in d["forbids"]]
-    return {"action": action, "allowed": not blockers, "blocked_by": blockers}
-
 
 @tool(
     name="decision_trail",

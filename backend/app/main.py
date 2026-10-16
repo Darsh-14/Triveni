@@ -15,6 +15,9 @@ from backend.app.graph.client import ping
 from backend.app.graph.tenant import InvalidTenant, get_graph, graph_name, list_tenants
 from backend.app.llm.providers import provider_order
 from backend.app.memory.conversation import list_conversations, load_history
+from backend.app.actions.actions import decide, list_actions
+from backend.app.agents.remediation import run_once as run_remediation
+from backend.app.coordination.handoff import list_handoffs
 from backend.app.tools import REGISTRY, run_tool
 
 load_dotenv()
@@ -163,3 +166,40 @@ def document(doc_id: str, tenant: str):
     i, title, kind, ts, source, text, author, mentions = rows[0]
     return {"id": i, "title": title, "kind": kind, "ts": ts, "source": source, "text": text,
             "author": author, "mentions": [m for m in mentions if m]}
+
+
+# --------------------------------------------------------------------------- coordination and approvals
+@app.get("/api/handoffs")
+def handoffs(tenant: str):
+    return list_handoffs(tenant_graph(tenant))
+
+
+@app.get("/api/actions")
+def actions(tenant: str):
+    return list_actions(tenant_graph(tenant))
+
+
+class Decision(BaseModel):
+    tenant: str
+    person: str = Field(pattern=r"^per:[a-z0-9-]+$")  # the human approving or rejecting
+    approve: bool
+
+
+@app.post("/api/actions/{action_id}/decide")
+def decide_action(action_id: str, body: Decision):
+    try:
+        return decide(tenant_graph(body.tenant), action_id, body.person, body.approve)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+class RunRemediation(BaseModel):
+    tenant: str
+
+
+@app.post("/api/remediation/run")
+async def remediation(body: RunRemediation):
+    """Start the remediation agent once: it claims the next open handoff from the graph (if any) and works on it."""
+    tenant_graph(body.tenant)
+    handoff, result = await run_remediation(body.tenant)
+    return {"handoff": handoff, "result": result.to_dict() if result else None}

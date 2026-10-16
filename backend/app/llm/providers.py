@@ -180,6 +180,14 @@ class RulesProvider:
         ids = ID_RE.findall(q)
         services = [s for s in SERVICE_RE.findall(q) if not s.startswith(("on-call", "single-point"))]
         svc = services[0] if services else None
+        incident = next((i for i in ids if i.startswith("inc:")), None)
+        if incident and re.search(r"hand ?off|escalate|remediat", q) and not q.startswith("handoff "):
+            return [("handoff", {"incident": incident, "summary": question[:300], "request": "Investigate and propose a fix."})]
+        if q.startswith("handoff ") and SERVICE_RE.search(q.split("affected:")[-1]):
+            svc_h = SERVICE_RE.findall(q.split("affected:")[-1])[0].removeprefix("svc:")
+            return [("recall", {"entities": [f"svc:{svc_h}"]}), ("decision_trail", {"service": svc_h}),
+                    ("propose_action", {"kind": "create_ticket", "target": svc_h,
+                                        "reason": "Follow-up from handoff (rules mode)", "title": f"Follow up {incident or svc_h}"})]
         if len(ids) >= 2 or (re.search(r"\b(connected|path|between|link)\b", q) and len(ids + services) >= 2):
             a, b = (ids + services)[:2]
             return [("shortest_path", {"from": a, "to": b, "mode": "any" if ":" in a + b else "dependency"})]

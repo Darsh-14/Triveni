@@ -329,3 +329,50 @@ RETURN e.id, e.ts, e.question, e.outcome, shared, a.id,
 ORDER BY size(shared) DESC, e.ts DESC
 LIMIT $limit
 ```
+
+## Track 02: coordination, and Track 01: approval-gated actions
+
+### Handoffs **[02]**
+`backend/app/coordination/handoff.py`, tools `handoff` / `claim_handoff` / `complete_handoff`. The claim is a single statement that matches `status: 'open'` and sets `claimed`. FalkorDB runs write queries on a graph one at a time, so 8 concurrent claimers produce exactly one winner (tested). Payloads are JSON strings because maps cannot be stored as properties.
+```cypher
+MATCH (src:Agent {id: $from}), (dst:Agent {id: $to})
+OPTIONAL MATCH (i:Incident {id: $incident})
+CREATE (src)-[:CREATED {ts: $ts}]->(h:Handoff {id: $id, ts: $ts, status: 'open', payload: $payload})-[:TO {ts: $ts}]->(dst)
+FOREACH (_ IN CASE WHEN i IS NULL THEN [] ELSE [1] END | CREATE (h)-[:ABOUT {ts: $ts}]->(i))
+RETURN h.id, i.id
+
+MATCH (h:Handoff {status: 'open'})-[:TO]->(:Agent {id: $agent})
+WITH h ORDER BY h.ts LIMIT 1
+SET h.status = 'claimed', h.claimed_by = $agent, h.claimed_ts = $ts
+WITH h
+OPTIONAL MATCH (h)-[:ABOUT]->(i:Incident)
+OPTIONAL MATCH (i)-[:AFFECTED]->(s:Service)
+OPTIONAL MATCH (src:Agent)-[:CREATED]->(h)
+RETURN h.id, h.payload, i.id, collect(DISTINCT s.id), src.id
+
+MATCH (h:Handoff {id: $id, status: 'claimed', claimed_by: $agent})
+SET h.status = 'done', h.done_ts = $ts, h.result = $result
+RETURN h.id
+```
+
+### Actions: propose, then gate, then human approval, then simulated outbox **[01] [02]**
+`backend/app/actions/actions.py` + `actions/gate.py`, tool `propose_action`, API `/api/actions/{id}/decide`. The gate reuses `decision_trail`'s query: if a current Decision governing the target lists the action kind in `forbids`, the Action is stored as `blocked` with BLOCKED_BY edges and can never be approved. Status changes only from `proposed`.
+```cypher
+MATCH (s:Service {id: $target})
+CREATE (a:Action {id: $id, kind: $kind, status: $status, ts: $ts, args: $args, proposed_by: $agent})-[:TARGETS {ts: $ts}]->(s)
+WITH a
+OPTIONAL MATCH (e:Episode {id: $episode})
+FOREACH (_ IN CASE WHEN e IS NULL THEN [] ELSE [1] END | CREATE (a)-[:PROPOSED_IN {ts: $ts}]->(e))
+WITH a
+UNWIND $blockers AS did
+MATCH (d:Decision {id: did})
+CREATE (a)-[:BLOCKED_BY {ts: $ts}]->(d)
+RETURN count(d)
+
+MATCH (a:Action {id: $id, status: 'proposed'}), (p:Person {id: $person})
+SET a.status = $status, a.decided_ts = $ts
+FOREACH (_ IN CASE WHEN $status = 'approved' THEN [1] ELSE [] END | CREATE (p)-[:APPROVED {ts: $ts}]->(a))
+RETURN a.id, a.kind, a.args
+
+MATCH (a:Action {id: $id, status: 'approved'}) SET a.status = 'executed', a.executed_ts = $ts, a.outbox = $file RETURN a.id
+```

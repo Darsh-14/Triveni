@@ -64,6 +64,16 @@ export interface ConversationInfo {
   title: string;
 }
 
+export interface HandoffInfo {
+  id: string; ts: string; status: string; payload: { summary?: string; request?: string };
+  from: string; to: string; incident: string | null; claimed_by: string | null; result: string | null;
+}
+
+export interface ActionInfo {
+  id: string; kind: string; status: string; ts: string; args: Record<string, unknown>; proposed_by: string;
+  target: string; blocked_by: string[]; approved_by: string | null; outbox: string | null;
+}
+
 export interface ToolInfo {
   name: string;
   description: string;
@@ -134,6 +144,14 @@ export const api = {
       `/api/conversations/${encodeURIComponent(id)}?tenant=${encodeURIComponent(tenant)}`),
   ingest: (tenant: string, path: string) =>
     call<ToolResult>("/api/ingest", { method: "POST", body: JSON.stringify({ tenant, path }) }),
+  handoffs: (tenant: string) => call<HandoffInfo[]>(`/api/handoffs?tenant=${encodeURIComponent(tenant)}`),
+  actions: (tenant: string) => call<ActionInfo[]>(`/api/actions?tenant=${encodeURIComponent(tenant)}`),
+  decide: (tenant: string, id: string, person: string, approve: boolean) =>
+    call<{ id: string; status: string; outbox?: string; delivered_to?: string }>(
+      `/api/actions/${encodeURIComponent(id)}/decide`, { method: "POST", body: JSON.stringify({ tenant, person, approve }) }),
+  runRemediation: (tenant: string) =>
+    call<{ handoff: { id: string; incident: string } | null; result: AgentResult | null }>(
+      "/api/remediation/run", { method: "POST", body: JSON.stringify({ tenant }) }),
   overview: (tenant: string) =>
     call<{ nodes: GraphNode[]; edges: GraphEdge[] }>(`/api/graph/overview?tenant=${encodeURIComponent(tenant)}`),
   nodes: (tenant: string, ids: string[]) =>

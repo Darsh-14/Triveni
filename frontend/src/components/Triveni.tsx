@@ -5,6 +5,7 @@ import { api, parseEdge, toolAsStep, type ConversationInfo, type GraphEdge, type
 import Drawer, { type DrawerContent } from "./Drawer";
 import EntryCard, { type Entry } from "./EntryCard";
 import GraphCanvas, { edgeKey, LABEL_COLOURS } from "./GraphCanvas";
+import Coordination from "./Coordination";
 import ToolRunner from "./ToolRunner";
 
 // Demo scenarios (MVP.md Section 5). With the agent online the question goes to Claude over MCP;
@@ -18,6 +19,8 @@ const SCENARIOS: { n: number; label: string; question: string; tool?: [string, R
     tool: ["why_not", { kind: "on_call", service: "billing-batch" }] },
   { n: 4, label: "Single points of knowledge?", question: "Which engineers are single points of knowledge?",
     tool: ["key_people", {}] },
+  { n: 6, label: "Hand off inc:0057 to remediation", question: "inc:0057: orders-api p99 latency is above 4s and workers are saturated. Investigate briefly, then hand it off to remediation for a fix.",
+    tool: ["similar_incidents", { incident: "inc:0057" }] },
   { n: 7, label: "Ingest: billing-batch moves to Atlas", question: "Ingest #eng-announcements: billing-batch moves to Team Atlas",
     ingest: "data/raw/live/chat-billing-move.md" },
 ];
@@ -40,7 +43,8 @@ export default function Triveni() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
-  const [panel, setPanel] = useState<"ask" | "tool">("ask");
+  const [panel, setPanel] = useState<"ask" | "tool" | "coord">("ask");
+  const [coordKey, setCoordKey] = useState(0);
   const [drawer, setDrawer] = useState<DrawerContent | null>(null);
   const [graph, setGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[]; highlight: Set<string>; title: string }>(
     { nodes: [], edges: [], highlight: new Set(), title: "" });
@@ -162,6 +166,7 @@ export default function Triveni() {
       const r = await api.ask(tenant, q, conversationId);
       setConversationId(r.conversation_id);
       refreshConversations();
+      setCoordKey((k) => k + 1);
       await finish(entry.id, { answer: r.answer, steps: r.steps, memory: `${r.conversation_id} · ${r.episode || "no episode"}`,
                               model: r.fallbacks.length ? `${r.model} (fell back: ${r.fallbacks.map((f) => f.split(":")[0]).join(", ")})` : r.model }, entry);
     } catch (e) {
@@ -247,10 +252,10 @@ export default function Triveni() {
               </select>
             </div>
             <div className="flex gap-1 text-xs">
-              {(["ask", "tool"] as const).map((p) => (
+              {(["ask", "tool", "coord"] as const).map((p) => (
                 <button key={p} onClick={() => setPanel(p)}
                         className={`rounded px-2 py-0.5 ${panel === p ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100"}`}>
-                  {p === "ask" ? "Ask the agent" : "Run a tool"}
+                  {p === "ask" ? "Ask the agent" : p === "tool" ? "Run a tool" : "Handoffs & approvals"}
                 </button>
               ))}
             </div>
@@ -263,8 +268,18 @@ export default function Triveni() {
                 <button disabled={!agentOnline || busy}
                         className="rounded bg-gray-900 px-3 text-sm font-medium text-white disabled:opacity-50">Ask</button>
               </form>
-            ) : (
+            ) : panel === "tool" ? (
               <ToolRunner tools={tools} busy={busy} onRun={(n, a) => runTool(n, a)} />
+            ) : (
+              <Coordination tenant={tenant} refreshKey={coordKey} onResult={(label, r) => {
+                if (!r.result) return;
+                const res = r.result;
+                const entry: Entry = { id: newId(), question: label, mode: "agent", pending: false, steps: res.steps, answer: res.answer,
+                                       model: res.model, memory: `${res.conversation_id} · ${res.episode || "no episode"}` };
+                setEntries((es) => [entry, ...es]);
+                setActiveId(entry.id);
+                showResult(entry);
+              }} />
             )}
           </div>
           <div className="flex-1 space-y-2 overflow-auto p-3">

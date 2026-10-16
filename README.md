@@ -37,7 +37,7 @@ _TODO: diagram + node/edge tables._
 | Multi-hop reasoning | `blast_radius` (variable-length DEPENDS_ON, current edges only, with owners and on-call), `shortest_path` (dependency chains or any fact path, e.g. person → incident → service → service), `decision_trail` (SUPERSEDES chains) |
 | Graph queries and algorithms as agent tools | `critical_services` (`algo.pageRank` on DEPENDS_ON), `key_people` (`algo.betweenness` on the derived expertise graph: single points of knowledge), `find_orphans` (`algo.WCC` on the derived responsibility graph), all exposed over MCP and checked against independently computed ground truth |
 | Tool selection through MCP | `backend/app/mcp_server.py` exposes the whole registry over MCP, one server per tenant (the tenant is never a tool argument). The triage agent (`agents/triage.py`) lists tools over MCP and calls them over MCP; every step is logged with tool, input, the model's progress note (why) and timing |
-| Actions based on what the graph shows | _TODO_ |
+| Actions based on what the graph shows | `propose_action` → Action node; blocked with a BLOCKED_BY edge when a current governing Decision forbids it (e.g. `change_retry_policy` on orders-api blocked by ADR-019); otherwise a person approves or rejects in the UI and approved actions go to a simulated outbox |
 | Explainable results | Every MCP tool result carries `cypher`, `params`, `paths`, `sources`, `tracks` as structuredContent; the agent cites entity ids and source documents |
 
 ## Track 02: Remember & coordinate
@@ -45,7 +45,7 @@ _TODO: diagram + node/edge tables._
 |---|---|
 | Episodic, semantic, procedural memory | `remember` writes Episode (INVOLVED entities, RAN by the agent), Lesson (reinforced, not duplicated) and Procedure (success/fail counters); `recall` finds past episodes **through shared graph entities**: a new payments-api incident reaches last month's episode via `svc:payments-api` |
 | Persistent conversation history | Conversation -HAS_MESSAGE-> Message chained by NEXT; every request rebuilds the model's context from the graph (no in-process state, tested with a real process restart); the UI reopens any conversation |
-| Shared state and handoffs | _TODO_ |
+| Shared state and handoffs | Triage and Remediation run as separate agents with separate MCP servers and share only graph state: Handoff nodes (open → claimed → done) with an atomic single-statement claim (8 concurrent claimers → 1 winner, tested) |
 | High-concurrency reads and writes | _TODO_ |
 | Separate memory per user or tenant | One graph per tenant; isolation test (`backend/tests/test_isolation.py`) |
 

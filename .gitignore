@@ -26,3 +26,6 @@ Thumbs.db
 
 # Local scratch
 *.log
+
+# Simulated action deliveries
+data/outbox/
