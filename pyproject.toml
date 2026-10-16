@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "triveni"
+version = "0.1.0"
+description = "Triveni: an engineering Company Brain on FalkorDB. Agents act, remember, and prove every answer with a path."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "falkordb>=1.8,<2",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "networkx>=3.3",  # tests only: cross-checks algorithm ground truth
+]
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+addopts = "-ra"
+markers = [
+    "db: needs a running FalkorDB (skipped when TRIVENI_FALKORDB_HOST is unreachable)",
+]
