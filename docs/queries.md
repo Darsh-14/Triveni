@@ -56,3 +56,18 @@ MATCH (s:Service) OPTIONAL MATCH (s)<-[r:RESPONSIBLE_FOR]-() WITH s, count(r) AS
 -- isolation (02): beta-only ids never appear in acme
 MATCH (n) WHERE n.id IN $ids RETURN n.id
 ```
+
+## Track 03 tools
+
+### owner_of **[03]**
+`backend/app/tools/owner_of.py`. Current facts only (`valid_to` absent); `include_history` adds superseded edges.
+```cypher
+MATCH (s:Service {name: $service})
+OPTIONAL MATCH (t:Team)-[o:OWNS]->(s) WHERE o.valid_to IS NULL
+WITH s, collect({id: t.id, name: t.name, source: o.source_doc, since: o.valid_from}) AS owners
+OPTIONAL MATCH (p:Person)-[c:ON_CALL_FOR]->(s) WHERE c.valid_to IS NULL
+RETURN s.id, owners, collect({id: p.id, name: p.name, source: c.source_doc, since: c.valid_from}) AS oncall
+
+MATCH (x)-[r:OWNS|ON_CALL_FOR]->(s:Service {name: $service})
+RETURN type(r), x.id, x.name, r.valid_from, r.valid_to, r.source_doc ORDER BY r.valid_from
+```
