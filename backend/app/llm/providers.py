@@ -33,6 +33,7 @@ class Turn:
     calls: list[Call] = field(default_factory=list)
     assistant_message: object = None  # provider-native message to append to the history
     model: str = ""
+    tokens: int = 0  # prompt + completion tokens reported by the provider
 
 
 class ProviderUnavailable(RuntimeError):
@@ -42,6 +43,40 @@ class ProviderUnavailable(RuntimeError):
 def _dump(obj) -> dict:
     """SDK object -> plain dict, keeping provider extras (e.g. extra_content) that the SDK passes through."""
     return obj.model_dump(exclude_none=True) if hasattr(obj, "model_dump") else dict(vars(obj))
+
+
+def _wait_seconds(exc) -> float | None:
+    """How long the provider asks us to wait (retry-after / x-ratelimit-reset-*), capped at 30 s; None if not a limit."""
+    response = getattr(exc, "response", None)
+    if response is None or response.status_code not in (413, 429):
+        return None
+    headers = response.headers
+    for key in ("retry-after", "x-ratelimit-reset-tokens", "x-ratelimit-reset-requests"):
+        value = headers.get(key)
+        if not value:
+            continue
+        total, matched = 0.0, False
+        for amount, unit in re.findall(r"([0-9.]+)(ms|s|m|h)?", value):
+            matched = True
+            total += float(amount) * {"ms": 0.001, "s": 1, "m": 60, "h": 3600, "": 1}[unit]
+        if matched:
+            return min(total + 0.5, 30.0) if total <= 30 else None  # a long wait means try the next provider
+    return 10.0
+
+
+async def _with_limit_retry(call):
+    """Call once; if the provider says "rate limited, retry in N s" with a short N, wait and retry once."""
+    import anyio
+    import openai
+
+    try:
+        return await call()
+    except openai.APIStatusError as exc:
+        wait = _wait_seconds(exc)
+        if wait is None:
+            raise
+        await anyio.sleep(wait)
+        return await call()
 
 
 # --------------------------------------------------------------------------- OpenAI-compatible (Groq, Gemini)
@@ -67,11 +102,11 @@ class OpenAICompatProvider:
         import openai
 
         try:
-            resp = await self.client.chat.completions.create(
+            resp = await _with_limit_retry(lambda: self.client.chat.completions.create(
                 model=self.model, temperature=0.2,
                 messages=[{"role": "system", "content": system}, *messages],
                 tools=self.tool_defs(tools), tool_choice="auto",
-            )
+            ))
         except (openai.APIStatusError, openai.APIConnectionError) as exc:  # 413/429/5xx/auth/timeouts: try the next provider
             raise ProviderUnavailable(f"{self.name}: {type(exc).__name__}: {exc}") from exc
         msg = resp.choices[0].message
@@ -88,22 +123,36 @@ class OpenAICompatProvider:
             # tool_calls[].extra_content.google.thought_signature and rejects the next turn without it.
             assistant["tool_calls"] = [_dump(tc) for tc in msg.tool_calls]
         note = (msg.content or "").strip() or (getattr(msg, "reasoning", None) or "").strip()  # reasoning models
+        usage = getattr(resp, "usage", None)
         return Turn(text=note if calls else (msg.content or "").strip(), calls=calls, assistant_message=assistant,
-                    model=f"{self.name}:{resp.model}")
+                    model=f"{self.name}:{resp.model}", tokens=getattr(usage, "total_tokens", 0) or 0)
 
     def tool_results(self, results: list[tuple[Call, str, bool]]) -> list[dict]:
         # one tool message per call; Groq rejects messages[].name, so it is not sent
         return [{"role": "tool", "tool_call_id": call.id, "content": text} for call, text, _ in results]
+
+    async def complete(self, system: str, user: str) -> tuple[str, str]:
+        """Plain completion, no tools (used by the eval's flat baseline). Returns (text, model)."""
+        import openai
+
+        try:
+            resp = await _with_limit_retry(lambda: self.client.chat.completions.create(
+                model=self.model, temperature=0.2,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}]))
+        except (openai.APIStatusError, openai.APIConnectionError) as exc:
+            raise ProviderUnavailable(f"{self.name}: {type(exc).__name__}: {exc}") from exc
+        self.last_tokens = getattr(getattr(resp, "usage", None), "total_tokens", 0) or 0
+        return (resp.choices[0].message.content or "").strip(), f"{self.name}:{resp.model}"
 
     async def json(self, system: str, user: str) -> tuple[str, str]:
         """JSON-mode completion (used by ingestion). Returns (text, model)."""
         import openai
 
         try:
-            resp = await self.client.chat.completions.create(
+            resp = await _with_limit_retry(lambda: self.client.chat.completions.create(
                 model=self.model, temperature=0.1, response_format={"type": "json_object"},
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            )
+            ))
         except (openai.APIStatusError, openai.APIConnectionError) as exc:  # 413/429/5xx/auth/timeouts: try the next provider
             raise ProviderUnavailable(f"{self.name}: {type(exc).__name__}: {exc}") from exc
         return resp.choices[0].message.content or "", f"{self.name}:{resp.model}"

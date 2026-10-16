@@ -19,8 +19,10 @@ from mcp.server.stdio import stdio_server
 from backend.app.graph.tenant import graph_name
 from backend.app.tools import REGISTRY, run_tool
 
-# Called by agent *code* (the remediation worker claims and completes handoffs itself), never offered to a model.
-HIDDEN_FROM_MODELS = {"claim_handoff", "complete_handoff"}
+# Callable over MCP but not offered to models: the remediation worker claims/completes handoffs in code, the UI
+# triggers ingestion, and conversation history is injected automatically. Fewer tool definitions per turn also keeps
+# prompts inside free-tier token budgets.
+HIDDEN_FROM_MODELS = {"claim_handoff", "complete_handoff", "ingest_document", "load_history"}
 
 
 def build_server(tenant: str, agent: str = "agent:triage") -> Server:

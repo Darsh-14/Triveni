@@ -8,6 +8,7 @@ display and the evidence the final answer must cite.
 Providers are tried in order (TRIVENI_LLM_PROVIDERS, default groq -> gemini -> anthropic -> rules).
 If one is rate-limited or unreachable, the run restarts on the next and the switch is recorded.
 """
+import inspect
 import json
 import os
 import sys
@@ -52,6 +53,7 @@ class AgentResult:
     fallbacks: list[str] = field(default_factory=list)  # providers that failed before this answer
     conversation_id: str = ""
     episode: str = ""  # memory written for this answer (by the model via `remember`, or automatically)
+    tokens: int = 0   # model tokens used for this answer
 
     @property
     def tracks(self) -> list[str]:
@@ -83,6 +85,7 @@ async def _run_with(provider, session, tools, question, tenant, system, history,
     for _ in range(max_turns):
         turn = await provider.turn(system, messages, tools)
         result.model = turn.model or result.model
+        result.tokens += getattr(turn, "tokens", 0) or 0
         messages.append(turn.assistant_message or {"role": "assistant", "content": turn.text})
         if not turn.calls:
             result.answer = turn.text
@@ -179,6 +182,10 @@ async def run_agent(question: str, tenant: str, system: str, history: list | Non
                     failed.append(str(exc)[:300])
                     continue
                 break
+    for provider in providers:  # release HTTP clients while the event loop is still running
+        close = getattr(getattr(provider, "client", None), "close", None)
+        if close is not None and inspect.iscoroutinefunction(close):
+            await close()
     result = result or AgentResult(question=question, tenant=tenant, answer="No provider could answer.")
     result.fallbacks = failed
     if persist:

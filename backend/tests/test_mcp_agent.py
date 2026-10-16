@@ -13,6 +13,7 @@ from backend.app.llm.providers import (
     AnthropicProvider, OpenAICompatProvider, ProviderUnavailable, RulesProvider,
 )
 from backend.app.agents.triage import SYSTEM
+from backend.app.mcp_server import HIDDEN_FROM_MODELS
 from backend.app.tools import REGISTRY, run_tool
 
 load_dotenv()
@@ -29,7 +30,7 @@ def test_mcp_lists_registry_with_exact_schemas(loaded):
     async def go(s):
         return (await s.list_tools()).tools
     tools = anyio.run(_with_session, "test_acme", go)
-    assert {t.name for t in tools} == set(REGISTRY) - {"claim_handoff", "complete_handoff"}  # code-only tools
+    assert {t.name for t in tools} == set(REGISTRY) - HIDDEN_FROM_MODELS  # code-only tools
     for t in tools:
         assert t.input_schema == REGISTRY[t.name].input_schema
         assert t.annotations.read_only_hint == REGISTRY[t.name].read_only
@@ -95,7 +96,7 @@ def test_agent_selects_tools_over_mcp_and_cites_them(loaded):
     assert r.answer.startswith("Page per:arjun-mehta")
 
     first, second = claude.requests
-    assert {t["name"] for t in first["tools"]} == set(REGISTRY) - {"claim_handoff", "complete_handoff"}  # the MCP list
+    assert {t["name"] for t in first["tools"]} == set(REGISTRY) - HIDDEN_FROM_MODELS  # the MCP list
     results = second["messages"][-1]["content"]
     assert [x["tool_use_id"] for x in results] == ["t1", "t2"]  # both results in ONE user message
     assert first["fallbacks"] == "default" and first["output_config"] == {"effort": "medium"}
@@ -145,7 +146,7 @@ def test_openai_compat_provider_over_mcp(loaded):
     assert r.model == "groq:scripted-oa" and r.answer.startswith("Page per:arjun-mehta")
     first, second = oa.requests
     assert first["messages"][0]["role"] == "system" and first["tool_choice"] == "auto"
-    assert {t["function"]["name"] for t in first["tools"]} == set(REGISTRY) - {"claim_handoff", "complete_handoff"}
+    assert {t["function"]["name"] for t in first["tools"]} == set(REGISTRY) - HIDDEN_FROM_MODELS
     tool_msgs = [m for m in second["messages"] if m["role"] == "tool"]
     assert [m["tool_call_id"] for m in tool_msgs] == ["c1", "c2"]
     assert all("name" not in m for m in tool_msgs)  # Groq rejects messages[].name
@@ -165,9 +166,9 @@ def test_falls_back_to_next_provider(loaded):
     import httpx
     import openai
 
-    limited = openai.RateLimitError("rate limited", body=None,
-                                    response=httpx.Response(429, request=httpx.Request("POST", "http://x")))
-    groq = OpenAICompatProvider("groq", client=ScriptedOpenAI([limited]), model="m")
+    limited = openai.RateLimitError("rate limited", body=None, response=httpx.Response(
+        429, headers={"retry-after": "0"}, request=httpx.Request("POST", "http://x")))
+    groq = OpenAICompatProvider("groq", client=ScriptedOpenAI([limited, limited]), model="m")  # retry once, then fall back
     gemini = OpenAICompatProvider("gemini", client=ScriptedOpenAI([_oa("Done via gemini.", model="g")]), model="m")
     r = anyio.run(lambda: run_agent("hello", "test_acme", SYSTEM, persist=False, providers=[groq, gemini]))
     assert r.model == "gemini:g" and r.answer == "Done via gemini."
@@ -196,12 +197,23 @@ def test_request_too_large_falls_back(loaded):
     import httpx
     import openai
 
-    too_large = openai.APIStatusError("Request too large (ITPM)", body=None,
-                                      response=httpx.Response(413, request=httpx.Request("POST", "http://x")))
-    groq = OpenAICompatProvider("groq", client=ScriptedOpenAI([too_large]), model="m")
+    too_large = openai.APIStatusError("Request too large (ITPM)", body=None, response=httpx.Response(
+        413, headers={"x-ratelimit-reset-tokens": "0s"}, request=httpx.Request("POST", "http://x")))
+    groq = OpenAICompatProvider("groq", client=ScriptedOpenAI([too_large, too_large]), model="m")
     gemini = OpenAICompatProvider("gemini", client=ScriptedOpenAI([_oa("ok via gemini", model="g")]), model="m")
     r = anyio.run(lambda: run_agent("hello", "test_acme", SYSTEM, persist=False, providers=[groq, gemini]))
     assert r.model == "gemini:g" and r.fallbacks[0].startswith("groq: APIStatusError")
+
+
+def test_short_rate_limit_is_waited_out_on_the_same_provider(loaded):
+    import httpx
+    import openai
+
+    limited = openai.RateLimitError("rate limited", body=None, response=httpx.Response(
+        429, headers={"x-ratelimit-reset-tokens": "120ms"}, request=httpx.Request("POST", "http://x")))
+    groq = OpenAICompatProvider("groq", client=ScriptedOpenAI([limited, _oa("ok after waiting", model="q")]), model="m")
+    r = anyio.run(lambda: run_agent("hello", "test_acme", SYSTEM, persist=False, providers=[groq]))
+    assert r.model == "groq:q" and r.fallbacks == []
 
 
 def test_large_tool_results_are_cut_for_the_model():
