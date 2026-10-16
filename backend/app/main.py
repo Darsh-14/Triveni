@@ -14,6 +14,7 @@ from backend.app.agents.triage import SYSTEM as TRIAGE_SYSTEM
 from backend.app.graph.client import ping
 from backend.app.graph.tenant import InvalidTenant, get_graph, graph_name, list_tenants
 from backend.app.llm.providers import provider_order
+from backend.app.memory.conversation import list_conversations, load_history
 from backend.app.tools import REGISTRY, run_tool
 
 load_dotenv()
@@ -73,13 +74,30 @@ def call_tool(name: str, body: ToolCall):
 class Ask(BaseModel):
     tenant: str
     question: str = Field(min_length=3, max_length=2000)
+    conversation_id: str | None = Field(default=None, pattern=r"^conv:[a-z0-9-]+$")
+    user_id: str = Field(default="user:demo", pattern=r"^user:[a-z0-9-]+$")
 
 
 @app.post("/api/ask")
 async def ask(body: Ask):
     tenant_graph(body.tenant)
-    result = await run_agent(body.question, body.tenant, TRIAGE_SYSTEM)  # falls back to rules mode if no model answers
+    # history is rebuilt from the graph; the answer, the conversation and an episode are written back to it
+    result = await run_agent(body.question, body.tenant, TRIAGE_SYSTEM, conversation_id=body.conversation_id,
+                             user_id=body.user_id)  # falls back to rules mode if no model answers
     return result.to_dict()
+
+
+@app.get("/api/conversations")
+def conversations(tenant: str):
+    return list_conversations(tenant_graph(tenant))
+
+
+@app.get("/api/conversations/{conversation_id}")
+def conversation(conversation_id: str, tenant: str):
+    messages = load_history(tenant_graph(tenant), conversation_id)
+    if not messages:
+        raise HTTPException(404, f"no conversation {conversation_id}")
+    return {"id": conversation_id, "messages": messages}
 
 
 class Ingest(BaseModel):

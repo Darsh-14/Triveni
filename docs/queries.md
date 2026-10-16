@@ -250,3 +250,82 @@ OPTIONAL MATCH (p:Person)-[k:KNOWS]->(s)
 OPTIONAL MATCH (x)-[old:OWNS|ON_CALL_FOR]->(s) WHERE old.valid_to IS NOT NULL
 RETURN s.id, s.name, s.tier, collect(DISTINCT d.id), collect(DISTINCT p.name), collect(DISTINCT x.id)
 ```
+
+## Track 02: memory
+
+### Conversation history **[02]**
+`backend/app/memory/conversation.py`, used by the agent loop on every request and by the `load_history` tool. `seq` is computed in the same statement that creates the message. NEXT links each message to the previous one, and history is read back by walking the chain. The process keeps no state, which a test proves by reading history back in a new Python process.
+```cypher
+MERGE (c:Conversation {id: $id})
+ON CREATE SET c.user_id = $user, c.started_ts = $ts
+WITH c
+MATCH (a:Agent {id: $agent})
+MERGE (c)-[w:WITH]->(a) ON CREATE SET w.ts = $ts
+RETURN c.id, c.started_ts
+
+MATCH (c:Conversation {id: $cid})
+OPTIONAL MATCH (c)-[:HAS_MESSAGE]->(m:Message)
+WITH c, max(m.seq) AS last
+CREATE (c)-[:HAS_MESSAGE {ts: $ts}]->(n:Message {id: $mid, role: $role, text: $text, ts: $ts, seq: coalesce(last, -1) + 1})
+WITH c, n
+OPTIONAL MATCH (c)-[:HAS_MESSAGE]->(prev:Message {seq: n.seq - 1})
+FOREACH (_ IN CASE WHEN prev IS NULL THEN [] ELSE [1] END | CREATE (prev)-[:NEXT {ts: $ts}]->(n))
+RETURN n.seq
+
+MATCH (c:Conversation {id: $cid})-[:HAS_MESSAGE]->(first:Message {seq: 0})
+MATCH (first)-[:NEXT*0..500]->(m:Message)
+RETURN m.role, m.text, m.seq, m.ts
+ORDER BY m.seq
+```
+
+### remember: Episode, Lesson, Procedure **[02]**
+`backend/app/memory/remember.py`, `tools/remember.py`. The acting agent comes from the MCP server's `--agent` flag, never from the model. A Lesson learned again is reinforced (confidence +0.1, capped at 1.0) rather than duplicated. A Procedure is reused by name and its counters updated from `procedure_result`.
+```cypher
+MATCH (a:Agent {id: $agent})
+CREATE (a)-[:RAN {ts: $ts}]->(e:Episode {id: $eid, ts: $ts, question: $question, outcome: $outcome})
+WITH e
+UNWIND $involved AS xid
+MATCH (x {id: xid}) WHERE x:Service OR x:Incident OR x:Person
+CREATE (e)-[:INVOLVED {ts: $ts}]->(x)
+RETURN count(x)
+
+MATCH (e:Episode {id: $eid})
+MERGE (l:Lesson {text: $text})
+ON CREATE SET l.id = $lid, l.confidence = 0.6, l.last_reinforced = $ts
+ON MATCH SET l.confidence = CASE WHEN l.confidence + 0.1 > 1.0 THEN 1.0 ELSE l.confidence + 0.1 END,
+             l.last_reinforced = $ts
+CREATE (e)-[:LEARNED {ts: $ts}]->(l)
+RETURN l.id, l.confidence
+
+MATCH (e:Episode {id: $eid})
+MERGE (p:Procedure {name: $name})
+ON CREATE SET p.id = $pid, p.steps = $steps, p.success_count = 0, p.fail_count = 0
+SET p.success_count = p.success_count + $ok, p.fail_count = p.fail_count + $failed
+CREATE (e)-[:USED {ts: $ts}]->(p)
+RETURN p.id, p.success_count, p.fail_count
+
+MATCH (p:Procedure {id: $pid})
+UNWIND $services AS sid
+MATCH (s:Service {id: sid})
+MERGE (p)-[f:FOR]->(s) ON CREATE SET f.ts = $ts
+RETURN count(s)
+```
+
+### recall: through shared entities, not text **[02]**
+`backend/app/memory/recall.py`, `tools/recall.py`. Query entities are first expanded one hop along AFFECTED, so a brand-new incident reaches episodes about its service. Results are ranked by the number of shared entities, then by recency.
+```cypher
+MATCH (x) WHERE x.id IN $ids
+OPTIONAL MATCH (x)-[:AFFECTED]-(y)
+RETURN collect(DISTINCT x.id) + collect(DISTINCT y.id)
+
+MATCH (e:Episode)-[:INVOLVED]->(x) WHERE x.id IN $ids
+WITH e, collect(DISTINCT x.id) AS shared
+OPTIONAL MATCH (e)-[:LEARNED]->(l:Lesson)
+OPTIONAL MATCH (e)-[:USED]->(p:Procedure)
+OPTIONAL MATCH (a:Agent)-[:RAN]->(e)
+RETURN e.id, e.ts, e.question, e.outcome, shared, a.id,
+       collect(DISTINCT {id: l.id, text: l.text, confidence: l.confidence}) AS lessons,
+       collect(DISTINCT {id: p.id, name: p.name, steps: p.steps, success_count: p.success_count, fail_count: p.fail_count}) AS procedures
+ORDER BY size(shared) DESC, e.ts DESC
+LIMIT $limit
+```

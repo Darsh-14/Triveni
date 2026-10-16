@@ -195,7 +195,8 @@ class RulesProvider:
             action = "change_retry_policy" if "retry" in q else None
             return [("decision_trail", {"service": svc, **({"action": action} if action else {})})]
         if re.search(r"fail|down|outage|broken|timeout|error|slow|latency|affected|blast", q):
-            return [("blast_radius", {"service": svc}), ("similar_incidents", {"service": svc})]
+            return [("blast_radius", {"service": svc}), ("similar_incidents", {"service": svc}),
+                    ("recall", {"entities": [f"svc:{svc}"]})]
         if re.search(r"on[ -]?call|page|pager", q):
             return [("why_not", {"kind": "on_call", "service": svc})]
         if re.search(r"who knows|expert|knowledge|single point", q):

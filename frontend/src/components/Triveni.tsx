@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, parseEdge, toolAsStep, type GraphEdge, type GraphNode, type Health, type Step, type ToolInfo } from "@/lib/api";
+import { api, parseEdge, toolAsStep, type ConversationInfo, type GraphEdge, type GraphNode, type Health, type Step, type ToolInfo } from "@/lib/api";
 import Drawer, { type DrawerContent } from "./Drawer";
 import EntryCard, { type Entry } from "./EntryCard";
 import GraphCanvas, { edgeKey, LABEL_COLOURS } from "./GraphCanvas";
@@ -45,6 +45,8 @@ export default function Triveni() {
   const [graph, setGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[]; highlight: Set<string>; title: string }>(
     { nodes: [], edges: [], highlight: new Set(), title: "" });
   const [error, setError] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ConversationInfo[]>([]);
 
   const busy = entries.some((e) => e.pending);
   const agentOnline = Boolean(health?.agent);
@@ -79,6 +81,36 @@ export default function Triveni() {
     setEntries([]);
     setActiveId(null);
     setDrawer(null);
+    setConversationId(null);
+  };
+
+  const refreshConversations = useCallback(() => {
+    api.conversations(tenant).then(setConversations).catch(() => setConversations([]));
+  }, [tenant]);
+
+  useEffect(() => {
+    let live = true;
+    api.conversations(tenant).then((c) => live && setConversations(c)).catch(() => live && setConversations([]));
+    return () => { live = false; };
+  }, [tenant]);
+
+  // Reopen a conversation: its messages come back from the graph (works after a restart)
+  const openConversation = async (id: string) => {
+    if (!id) { setConversationId(null); setEntries([]); return; }
+    try {
+      const c = await api.conversation(tenant, id);
+      const restored: Entry[] = [];
+      for (let i = 0; i < c.messages.length; i += 2) {
+        const q = c.messages[i], a = c.messages[i + 1];
+        restored.unshift({ id: newId(), question: q.text, mode: "agent", pending: false, steps: [], answer: a?.text,
+                           memory: `restored from ${id} (message ${q.seq})` });
+      }
+      setEntries(restored);
+      setConversationId(id);
+      setActiveId(null);
+    } catch (e) {
+      setError((e as Error).message);
+    }
   };
 
   // ---------------------------------------------------------------- canvas for a result
@@ -127,8 +159,10 @@ export default function Triveni() {
     const entry: Entry = { id: newId(), question: q, mode: "agent", pending: true, steps: [] };
     setEntries((es) => [entry, ...es]);
     try {
-      const r = await api.ask(tenant, q);
-      await finish(entry.id, { answer: r.answer, steps: r.steps,
+      const r = await api.ask(tenant, q, conversationId);
+      setConversationId(r.conversation_id);
+      refreshConversations();
+      await finish(entry.id, { answer: r.answer, steps: r.steps, memory: `${r.conversation_id} · ${r.episode || "no episode"}`,
                               model: r.fallbacks.length ? `${r.model} (fell back: ${r.fallbacks.map((f) => f.split(":")[0]).join(", ")})` : r.model }, entry);
     } catch (e) {
       update(entry.id, { pending: false, error: (e as Error).message });
@@ -201,6 +235,16 @@ export default function Triveni() {
                   <span className="font-semibold text-gray-500">#{s.n}</span> {s.label}
                 </button>
               ))}
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-500">conversation</span>
+              <select value={conversationId ?? ""} onChange={(e) => openConversation(e.target.value)}
+                      className="min-w-0 flex-1 rounded border border-gray-300 bg-white px-1.5 py-0.5">
+                <option value="">new conversation</option>
+                {conversations.map((c) => (
+                  <option key={c.id} value={c.id}>{c.id} · {c.messages} msgs · {c.title}</option>
+                ))}
+              </select>
             </div>
             <div className="flex gap-1 text-xs">
               {(["ask", "tool"] as const).map((p) => (

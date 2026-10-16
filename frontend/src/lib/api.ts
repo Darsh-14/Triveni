@@ -49,8 +49,19 @@ export interface AgentResult {
   steps: Step[];
   model: string;
   fallbacks: string[];
+  conversation_id: string;
+  episode: string;
   tracks: Track[];
   sources: string[];
+}
+
+export interface ConversationInfo {
+  id: string;
+  user_id: string;
+  started_ts: string;
+  messages: number;
+  last_ts: string | null;
+  title: string;
 }
 
 export interface ToolInfo {
@@ -114,8 +125,13 @@ export const api = {
   tools: () => call<ToolInfo[]>("/api/tools"),
   runTool: (tenant: string, name: string, args: Record<string, unknown>) =>
     call<ToolResult>(`/api/tools/${name}`, { method: "POST", body: JSON.stringify({ tenant, args }) }),
-  ask: (tenant: string, question: string) =>
-    call<AgentResult>("/api/ask", { method: "POST", body: JSON.stringify({ tenant, question }) }),
+  ask: (tenant: string, question: string, conversation_id?: string | null) =>
+    call<AgentResult>("/api/ask", { method: "POST", body: JSON.stringify({ tenant, question, conversation_id: conversation_id ?? null }) }),
+  conversations: (tenant: string) =>
+    call<ConversationInfo[]>(`/api/conversations?tenant=${encodeURIComponent(tenant)}`),
+  conversation: (tenant: string, id: string) =>
+    call<{ id: string; messages: { role: string; text: string; seq: number; ts: string }[] }>(
+      `/api/conversations/${encodeURIComponent(id)}?tenant=${encodeURIComponent(tenant)}`),
   ingest: (tenant: string, path: string) =>
     call<ToolResult>("/api/ingest", { method: "POST", body: JSON.stringify({ tenant, path }) }),
   overview: (tenant: string) =>

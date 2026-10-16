@@ -51,3 +51,12 @@ def test_tenant_isolation_over_http(client):
     acme = client.post("/api/tools/owner_of", json={"tenant": "test_acme", **q}).json()
     beta = client.post("/api/tools/owner_of", json={"tenant": "test_beta", **q}).json()
     assert acme["data"]["on_call"][0]["id"] == "per:arjun-mehta" and beta["data"]["on_call"][0]["id"] == "per:lars-eriksen"
+
+
+def test_conversation_endpoints(client):
+    convs = client.get("/api/conversations", params={"tenant": "test_acme"}).json()
+    assert "conv:0001" in [c["id"] for c in convs]
+    msgs = client.get("/api/conversations/conv:0001", params={"tenant": "test_acme"}).json()["messages"]
+    assert [m["seq"] for m in msgs] == [0, 1, 2, 3]
+    assert client.get("/api/conversations/conv:none", params={"tenant": "test_acme"}).status_code == 404
+    assert client.post("/api/ask", json={"tenant": "test_acme", "question": "hello", "conversation_id": "bad id"}).status_code == 422

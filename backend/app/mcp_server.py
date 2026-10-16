@@ -2,8 +2,8 @@
 
     python -m backend.app.mcp_server --tenant acme
 
-One server process serves one tenant. The tenant is fixed at start-up and is never a tool
-argument, so a model talking to this server cannot reach another tenant's graph.
+One server process serves one tenant as one agent. Both are fixed at start-up and are never tool
+arguments, so a model talking to this server cannot reach another tenant's graph or write as another agent.
 Each tool result is returned twice: as JSON text (for any MCP client) and as structuredContent
 (the full provenance contract: data, cypher, params, paths, explanation, tracks, sources).
 """
@@ -20,7 +20,7 @@ from backend.app.graph.tenant import graph_name
 from backend.app.tools import REGISTRY, run_tool
 
 
-def build_server(tenant: str) -> Server:
+def build_server(tenant: str, agent: str = "agent:triage") -> Server:
     graph_name(tenant)  # validates the tenant name before anything else happens
 
     async def list_tools(ctx, params) -> types.ListToolsResult:
@@ -37,7 +37,7 @@ def build_server(tenant: str) -> Server:
     async def call_tool(ctx, params: types.CallToolRequestParams) -> types.CallToolResult:
         try:
             # FalkorDB client calls are blocking; keep them off the event loop
-            result = await anyio.to_thread.run_sync(lambda: run_tool(tenant, params.name, params.arguments or {}))
+            result = await anyio.to_thread.run_sync(lambda: run_tool(tenant, params.name, params.arguments or {}, agent=agent))
         except Exception as exc:  # tool errors go back to the model as is_error results, not crashes
             return types.CallToolResult(content=[types.TextContent(type="text", text=f"{type(exc).__name__}: {exc}")],
                                         is_error=True)
@@ -50,8 +50,8 @@ def build_server(tenant: str) -> Server:
                   on_list_tools=list_tools, on_call_tool=call_tool)
 
 
-async def serve(tenant: str) -> None:
-    server = build_server(tenant)
+async def serve(tenant: str, agent: str) -> None:
+    server = build_server(tenant, agent)
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
@@ -59,7 +59,9 @@ async def serve(tenant: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Triveni MCP server (stdio)")
     ap.add_argument("--tenant", default=os.getenv("TRIVENI_DEFAULT_TENANT", "acme"))
-    anyio.run(serve, ap.parse_args().tenant)
+    ap.add_argument("--agent", default="agent:triage", choices=["agent:triage", "agent:remediation"])
+    args = ap.parse_args()
+    anyio.run(serve, args.tenant, args.agent)
 
 
 if __name__ == "__main__":

@@ -43,8 +43,8 @@ _TODO: diagram + node/edge tables._
 ## Track 02: Remember & coordinate
 | Key focus | Feature |
 |---|---|
-| Episodic, semantic, procedural memory | _TODO_ |
-| Persistent conversation history | _TODO_ |
+| Episodic, semantic, procedural memory | `remember` writes Episode (INVOLVED entities, RAN by the agent), Lesson (reinforced, not duplicated) and Procedure (success/fail counters); `recall` finds past episodes **through shared graph entities**: a new payments-api incident reaches last month's episode via `svc:payments-api` |
+| Persistent conversation history | Conversation -HAS_MESSAGE-> Message chained by NEXT; every request rebuilds the model's context from the graph (no in-process state, tested with a real process restart); the UI reopens any conversation |
 | Shared state and handoffs | _TODO_ |
 | High-concurrency reads and writes | _TODO_ |
 | Separate memory per user or tenant | One graph per tenant; isolation test (`backend/tests/test_isolation.py`) |

@@ -13,6 +13,7 @@ export interface Entry {
   error?: string;
   data?: unknown;
   model?: string;
+  memory?: string; // conversation / episode written for this answer
 }
 
 export const entryTracks = (e: Entry): Track[] => [...new Set(e.steps.flatMap((s) => s.tracks))];
@@ -73,6 +74,7 @@ export default function EntryCard({ entry, active, onSelect, onCypher, onDoc }: 
         <SourceChips sources={entrySources(entry)} onOpen={onDoc} />
       </div>
       {entry.model && <p className="mt-1 text-[10px] text-gray-400">model: {entry.model}</p>}
+      {entry.memory && <p className="mt-0.5 text-[10px] text-blue-600">memory: {entry.memory}</p>}
     </div>
   );
 }

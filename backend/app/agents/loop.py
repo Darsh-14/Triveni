@@ -18,7 +18,10 @@ from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from backend.app.graph.tenant import get_graph
 from backend.app.llm.providers import ProviderUnavailable, make, provider_order
+from backend.app.memory.conversation import append_message, load_history, start_conversation
+from backend.app.memory.remember import remember
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -47,6 +50,8 @@ class AgentResult:
     steps: list[Step] = field(default_factory=list)
     model: str = ""
     fallbacks: list[str] = field(default_factory=list)  # providers that failed before this answer
+    conversation_id: str = ""
+    episode: str = ""  # memory written for this answer (by the model via `remember`, or automatically)
 
     @property
     def tracks(self) -> list[str]:
@@ -60,8 +65,9 @@ class AgentResult:
         return asdict(self) | {"tracks": self.tracks, "sources": self.sources}
 
 
-def server_params(tenant: str) -> StdioServerParameters:
-    return StdioServerParameters(command=sys.executable, args=["-m", "backend.app.mcp_server", "--tenant", tenant],
+def server_params(tenant: str, agent: str = "agent:triage") -> StdioServerParameters:
+    return StdioServerParameters(command=sys.executable,
+                                 args=["-m", "backend.app.mcp_server", "--tenant", tenant, "--agent", agent],
                                  cwd=str(REPO_ROOT), env=dict(os.environ))
 
 
@@ -106,11 +112,51 @@ async def _run_with(provider, session, tools, question, tenant, system, history,
     return result
 
 
+MEMORY_PREFIXES = ("svc:", "inc:", "per:")
+
+
+def _involved(result: AgentResult) -> list[str]:
+    """Entities an answer touched (from its evidence paths), for the automatic episode."""
+    seen = []
+    for step in result.steps:
+        for path in step.paths:
+            for node in path["nodes"]:
+                if node.startswith(MEMORY_PREFIXES) and node not in seen:
+                    seen.append(node)
+    return seen[:10]
+
+
+def _persist(tenant: str, agent: str, user_id: str, conversation_id: str | None, result: AgentResult) -> None:
+    """Conversation + episodic memory, written after the answer. All state lives in the tenant graph."""
+    graph = get_graph(tenant)
+    cid = start_conversation(graph, user_id, agent=agent, conversation_id=conversation_id)
+    append_message(graph, cid, "user", result.question)
+    append_message(graph, cid, "assistant", result.answer)
+    result.conversation_id = cid
+    stored = [s for s in result.steps if s.tool == "remember" and s.ok]
+    if stored:
+        result.episode = stored[-1].explanation.split(" ")[1]  # "Stored ep:... by ..."
+    elif result.steps:
+        result.episode = remember(graph, agent, result.question, "answered", _involved(result))["episode"]
+
+
+def history_messages(tenant: str, conversation_id: str | None) -> list[dict]:
+    """Rebuild the model's context from the graph (text turns only; tool traces are in the episodes)."""
+    if not conversation_id:
+        return []
+    return [{"role": m["role"], "content": m["text"]} for m in load_history(get_graph(tenant), conversation_id)
+            if m["role"] in ("user", "assistant") and m["text"]]
+
+
 async def run_agent(question: str, tenant: str, system: str, history: list | None = None,
-                    providers: list | None = None, max_turns: int = 10) -> AgentResult:
+                    providers: list | None = None, max_turns: int = 10, conversation_id: str | None = None,
+                    user_id: str = "user:demo", agent: str = "agent:triage", persist: bool = True) -> AgentResult:
     providers = providers if providers is not None else [make(n) for n in provider_order()]
+    if history is None:
+        history = history_messages(tenant, conversation_id)
     failed: list[str] = []
-    async with stdio_client(server_params(tenant)) as (read, write):
+    result = None
+    async with stdio_client(server_params(tenant, agent)) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             tools = mcp_tools((await session.list_tools()).tools)
@@ -120,9 +166,12 @@ async def run_agent(question: str, tenant: str, system: str, history: list | Non
                 except ProviderUnavailable as exc:
                     failed.append(str(exc)[:300])
                     continue
-                result.fallbacks = failed
-                return result
-    return AgentResult(question=question, tenant=tenant, answer="No provider could answer.", fallbacks=failed)
+                break
+    result = result or AgentResult(question=question, tenant=tenant, answer="No provider could answer.")
+    result.fallbacks = failed
+    if persist:
+        _persist(tenant, agent, user_id, conversation_id, result)
+    return result
 
 
 def print_result(r: AgentResult) -> None:

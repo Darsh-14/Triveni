@@ -86,7 +86,7 @@ def test_agent_selects_tools_over_mcp_and_cites_them(loaded):
             NS(type="text", text="Page per:arjun-mehta. Affected: svc:orders-api ... [doc:pm-0042]"),
         ]),
     ])
-    r = anyio.run(lambda: run_agent("payments-api is failing", "test_acme", SYSTEM, providers=[AnthropicProvider(client=claude)]))
+    r = anyio.run(lambda: run_agent("payments-api is failing", "test_acme", SYSTEM, persist=False, providers=[AnthropicProvider(client=claude)]))
 
     assert [s.tool for s in r.steps] == ["blast_radius", "similar_incidents"] and all(s.via == "mcp" for s in r.steps)
     assert r.steps[0].why.startswith("Check what depends")
@@ -106,7 +106,7 @@ def test_agent_passes_tool_errors_back_to_model(loaded):
         NS(model="scripted", stop_reason="tool_use", content=[_tool_use("t1", "blast_radius", {"service": "payments-api", "depth": 9})]),
         NS(model="scripted", stop_reason="end_turn", content=[NS(type="text", text="Retried with valid depth.")]),
     ])
-    r = anyio.run(lambda: run_agent("x", "test_acme", SYSTEM, providers=[AnthropicProvider(client=claude)]))
+    r = anyio.run(lambda: run_agent("x", "test_acme", SYSTEM, persist=False, providers=[AnthropicProvider(client=claude)]))
     assert r.steps[0].ok is False
     assert claude.requests[1]["messages"][-1]["content"][0]["is_error"] is True
 
@@ -139,7 +139,7 @@ def test_openai_compat_provider_over_mcp(loaded):
                                            ("c2", "owner_of", '{"service": "payments-api"}')]),
         _oa("Page per:arjun-mehta [doc:oncall-schedule]."),
     ])
-    r = anyio.run(lambda: run_agent("payments-api is failing", "test_acme", SYSTEM,
+    r = anyio.run(lambda: run_agent("payments-api is failing", "test_acme", SYSTEM, persist=False,
                                     providers=[OpenAICompatProvider("groq", client=oa, model="test-model")]))
     assert [s.tool for s in r.steps] == ["blast_radius", "owner_of"] and r.steps[0].why == "Checking dependents first."
     assert r.model == "groq:scripted-oa" and r.answer.startswith("Page per:arjun-mehta")
@@ -156,7 +156,7 @@ def test_openai_compat_provider_over_mcp(loaded):
 
 def test_invalid_tool_arguments_are_not_sent_to_mcp(loaded):
     oa = ScriptedOpenAI([_oa("", [("c1", "blast_radius", '{"service": ')]), _oa("Sorry, retrying.")])
-    r = anyio.run(lambda: run_agent("x", "test_acme", SYSTEM,
+    r = anyio.run(lambda: run_agent("x", "test_acme", SYSTEM, persist=False,
                                     providers=[OpenAICompatProvider("gemini", client=oa, model="m")]))
     assert r.steps[0].ok is False and "Invalid JSON" in r.steps[0].explanation
 
@@ -169,7 +169,7 @@ def test_falls_back_to_next_provider(loaded):
                                     response=httpx.Response(429, request=httpx.Request("POST", "http://x")))
     groq = OpenAICompatProvider("groq", client=ScriptedOpenAI([limited]), model="m")
     gemini = OpenAICompatProvider("gemini", client=ScriptedOpenAI([_oa("Done via gemini.", model="g")]), model="m")
-    r = anyio.run(lambda: run_agent("hello", "test_acme", SYSTEM, providers=[groq, gemini]))
+    r = anyio.run(lambda: run_agent("hello", "test_acme", SYSTEM, persist=False, providers=[groq, gemini]))
     assert r.model == "gemini:g" and r.answer == "Done via gemini."
     assert len(r.fallbacks) == 1 and r.fallbacks[0].startswith("groq: RateLimitError")
 
@@ -185,15 +185,15 @@ class _Down:
 
 
 def test_all_models_down_uses_rules(loaded):
-    r = anyio.run(lambda: run_agent("payments-api is failing, who do I page?", "test_acme", SYSTEM,
+    r = anyio.run(lambda: run_agent("payments-api is failing, who do I page?", "test_acme", SYSTEM, persist=False,
                                     providers=[_Down(), RulesProvider()]))
     assert r.model == "rules" and r.fallbacks == ["groq: down"]
-    assert [s.tool for s in r.steps] == ["blast_radius", "similar_incidents"] and all(s.via == "mcp" for s in r.steps)
+    assert [s.tool for s in r.steps] == ["blast_radius", "similar_incidents", "recall"] and all(s.via == "mcp" for s in r.steps)
     assert r.answer.startswith("Rules mode") and "Page Arjun Mehta" in r.answer
 
 
 @pytest.mark.parametrize("question,plan", [
-    ("payments-api is failing, what's affected?", ["blast_radius", "similar_incidents"]),
+    ("payments-api is failing, what's affected?", ["blast_radius", "similar_incidents", "recall"]),
     ("Can we change the retry policy on orders-api?", ["decision_trail"]),
     ("Who is on call for billing-batch?", ["why_not"]),
     ("Who knows payments-api best?", ["who_knows"]),
@@ -215,7 +215,7 @@ def test_rules_retry_question_checks_the_action():
 
 @pytest.mark.skipif(not (os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY")), reason="no GROQ/GEMINI key")
 def test_live_model_agent_scenario1(loaded):
-    r = anyio.run(lambda: run_agent("payments-api is failing, what's affected and who do I page?", "test_acme", SYSTEM))
+    r = anyio.run(lambda: run_agent("payments-api is failing, what's affected and who do I page?", "test_acme", SYSTEM, persist=False))
     assert r.model != "rules", r.fallbacks
     assert "blast_radius" in [s.tool for s in r.steps]
     assert "arjun" in r.answer.lower()
@@ -223,7 +223,7 @@ def test_live_model_agent_scenario1(loaded):
 
 @pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY not set")
 def test_live_anthropic_agent_scenario1(loaded, acme):
-    r = anyio.run(lambda: run_agent("payments-api is failing, what's affected and who do I page?", "test_acme", SYSTEM,
+    r = anyio.run(lambda: run_agent("payments-api is failing, what's affected and who do I page?", "test_acme", SYSTEM, persist=False,
                                     providers=[AnthropicProvider()]))
     assert "blast_radius" in [s.tool for s in r.steps]
     assert "arjun" in r.answer.lower()
