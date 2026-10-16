@@ -21,6 +21,7 @@ cp .env.example .env
 python -m backend.scripts.seed --tenant acme --seed 42
 python -m backend.scripts.seed --tenant beta --seed 7
 pytest -q
+python -m backend.app.agents.triage "payments-api is failing, what's affected and who do I page?" --tenant acme
 ```
 
 ## Graph model
@@ -31,11 +32,11 @@ _TODO: diagram + node/edge tables._
 ## Track 01: Act on connected data
 | Key focus | Feature |
 |---|---|
-| Multi-hop reasoning | _TODO_ |
+| Multi-hop reasoning | `blast_radius` (variable-length DEPENDS_ON, current edges only, with owners and on-call), `shortest_path` (dependency chains or any fact path, e.g. person → incident → service → service), `decision_trail` (SUPERSEDES chains) |
 | Graph queries and algorithms as agent tools | _TODO_ |
-| Tool selection through MCP | _TODO_ |
+| Tool selection through MCP | `backend/app/mcp_server.py` exposes the whole registry over MCP, one server per tenant (the tenant is never a tool argument). The triage agent (`agents/triage.py`) lists tools over MCP and calls them over MCP; every step is logged with tool, input, the model's progress note (why) and timing |
 | Actions based on what the graph shows | _TODO_ |
-| Explainable results | _TODO_ |
+| Explainable results | Every MCP tool result carries `cypher`, `params`, `paths`, `sources`, `tracks` as structuredContent; the agent cites entity ids and source documents |
 
 ## Track 02: Remember & coordinate
 | Key focus | Feature |

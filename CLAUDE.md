@@ -56,6 +56,9 @@ README.md
 docker compose up -d falkordb
 python -m backend.scripts.seed --tenant acme --seed 42
 uvicorn backend.app.main:app --reload
+python -m backend.app.mcp_server --tenant acme          # MCP server (stdio)
+python -m backend.app.agents.triage "<question>" --tenant acme
+python -m backend.app.ingest.pipeline data/raw/*.md --tenant acme
 pytest -q
 python -m backend.scripts.eval --out docs/eval.md
 npm --prefix frontend run dev
@@ -88,6 +91,8 @@ Each tool result also carries `tracks: ["01","03"]` and `sources: [document ids]
 - Dependency direction: `(A)-[:DEPENDS_ON]->(B)` means A needs B. Blast radius of B = nodes that reach B: `MATCH p=(d:Service)-[:DEPENDS_ON*1..3]->(s:Service {name:$svc}) RETURN p`.
 - Algorithm procedures: check docs.falkordb.com/algorithms for exact names and signatures before coding each one; wrap in a thin function with a test. Do not guess.
 - Path multiplicity: if a multi-hop pattern's middle node is not used after MATCH, FalkorDB's planner collapses the hops and returns each endpoint pair once. When counts matter, aggregate with `count(*)` or return the middle node (verified Oct 16).
+- FalkorDB `shortestPath()` is directed only (undirected is rejected) and takes no property filters in its pattern; for undirected connections use a bounded var-length MATCH with `WITH p ORDER BY length(p) LIMIT 1` (verified Oct 16).
+- MCP: the `mcp` package is 2.x (`FastMCP` is now `MCPServer`; we use the low-level `Server(on_list_tools=..., on_call_tool=...)` to serve the registry's exact JSON schemas).
 - Read tools run read-only queries. Writes happen only in `remember`, handoff and action code paths.
 
 ### Memory and coordination model (Track 02)

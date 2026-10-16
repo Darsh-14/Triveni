@@ -173,3 +173,29 @@ RETURN t.id, r.source_doc, p.id, p.name, coalesce(k.weight, 0) AS w ORDER BY w D
 
 MATCH (p:Person)-[k:KNOWS]->(s:Service {name: $service}) RETURN p.id, p.name, k.weight ORDER BY k.weight DESC, p.id LIMIT 3
 ```
+
+## Track 01 tools
+
+### blast_radius **[01]**
+`backend/app/tools/blast_radius.py`. `(A)-[:DEPENDS_ON]->(B)` means A needs B, so the blast radius of B is every service that reaches B. Only current edges count (`all(r IN relationships(p) WHERE r.valid_to IS NULL)`). Depth is validated against {1,2,3,4} and interpolated.
+```cypher
+MATCH p=(d:Service)-[:DEPENDS_ON*1..3]->(s:Service {name: $service})
+WHERE all(r IN relationships(p) WHERE r.valid_to IS NULL)
+RETURN d.id, d.name, d.tier, length(p) AS hops, [n IN nodes(p) | n.id] AS path
+ORDER BY hops, d.id
+
+MATCH (t:Team)-[o:OWNS]->(s:Service) WHERE s.id IN $ids AND o.valid_to IS NULL
+OPTIONAL MATCH (p:Person)-[c:ON_CALL_FOR]->(s) WHERE c.valid_to IS NULL
+RETURN s.id, t.id, t.name, p.id, p.name, o.source_doc, c.source_doc
+```
+
+### shortest_path **[01]**
+`backend/app/tools/shortest_path.py`. `dependency` mode uses FalkorDB `shortestPath()` with the endpoints resolved first. **FalkorDB does not support undirected `shortestPath()`** (error: "does not currently support undirected shortestPath traversals"), so `any` mode is a bounded variable-length match ordered by length. The ordering must sit in a `WITH`, because `ORDER BY length(p)` after `RETURN` fails once `p` is projected away.
+```cypher
+MATCH (a:Service {id: $from}), (b:Service {id: $to}) WITH a, b, shortestPath((a)-[:DEPENDS_ON*1..8]->(b)) AS p WHERE p IS NOT NULL 
+RETURN [n IN nodes(p) | n.id], [r IN relationships(p) | type(r)], [r IN relationships(p) | startNode(r).id], [r IN relationships(p) | r.valid_to]
+
+MATCH p=(a {id: $from})-[:MEMBER_OF|OWNS|ON_CALL_FOR|DEPENDS_ON|AUTHORED|DEPLOYED_TO|AFFECTED|CAUSED_BY|RESOLVED|MADE|GOVERNS|SUPERSEDES*1..4]-(b {id: $to}) 
+WITH p ORDER BY length(p) LIMIT 1 
+RETURN [n IN nodes(p) | n.id], [r IN relationships(p) | type(r)], [r IN relationships(p) | startNode(r).id], [r IN relationships(p) | r.valid_to]
+```
