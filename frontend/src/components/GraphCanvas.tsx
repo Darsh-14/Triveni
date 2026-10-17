@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Core, ElementDefinition, LayoutOptions, NodeSingular } from "cytoscape";
-import { Eye, EyeOff, Maximize, Network, Orbit, Search, Share2, SunDim, ZoomIn, ZoomOut } from "lucide-react";
+import { Boxes, ChevronDown, ChevronsDownUp, ChevronUp, Eye, EyeOff, Maximize, Network, Orbit, Search, Share2, SunDim, ZoomIn, ZoomOut } from "lucide-react";
 import type { GraphEdge, GraphNode } from "@/lib/api";
 import { styleOf } from "@/lib/entities";
 import { IconButton, ShapeSwatch } from "./ui";
@@ -38,11 +38,21 @@ const STYLE = [
       "text-background-padding": "1px" } },
   { selector: "edge.overview", style: { label: "", width: 1, "line-color": "#cbd5e1", "target-arrow-color": "#cbd5e1" } },
   { selector: "edge.old", style: { "line-style": "dashed", "line-color": "#b45309", "target-arrow-color": "#b45309", color: "#b45309" } },
+  // team grouping (overview): a team is a box around the services it owns; collapsed it is one node
+  { selector: "node:parent", style: {
+      shape: "round-rectangle", "background-color": "#047857", "background-opacity": 0.05, "border-width": 1,
+      "border-color": "#047857", "border-opacity": 0.35, padding: "14px", label: "data(label)", "text-valign": "top",
+      "text-halign": "center", "text-margin-y": -4, "font-size": 12, "font-weight": "bold", color: "#047857" } },
+  { selector: "node.unowned", style: { "border-style": "dashed", "border-color": "#b45309", "border-opacity": 0.8,
+      "background-color": "#b45309", "background-opacity": 0.04, color: "#b45309" } },
+  { selector: "node.collapsed", style: { width: 40, height: 40, "font-weight": "bold", color: "#047857" } },
+  { selector: "edge.meta", style: { width: "mapData(count, 1, 12, 1.5, 6)", "line-color": "#94a3b8", "target-arrow-color": "#94a3b8" } },
   { selector: ".faded", style: { opacity: 0.12, "text-opacity": 0 } },
   { selector: ".off", style: { display: "none" } },
 ];
 
-function layoutOptions(name: LayoutName, cy: Core, roots: string[], count: number): LayoutOptions {
+function layoutOptions(name: LayoutName, cy: Core, roots: string[], count: number, grouped = false): LayoutOptions {
+  if (grouped && name === "force") return { name: "preset", padding: 40, animate: false } as LayoutOptions;
   const rootEls = roots.reduce((c, id) => c.union(cy.getElementById(id)), cy.collection());
   if (name === "tree") {
     return { name: "breadthfirst", directed: false, roots: rootEls.nonempty() ? rootEls : undefined, padding: 30,
@@ -58,10 +68,87 @@ function layoutOptions(name: LayoutName, cy: Core, roots: string[], count: numbe
            nodeSeparation: 60 } as LayoutOptions;
 }
 
+const UNOWNED = "group:unowned"; // synthetic box, not a graph node
+
+/** Cytoscape elements for the graph. Grouped (overview only): OWNS edges become nesting, a collapsed team hides its
+    services and their DEPENDS_ON edges are redrawn to the team as combined edges with a count. */
+function buildElements(nodes: GraphNode[], edges: GraphEdge[], roots: string[], overview: boolean, grouped: boolean,
+                       collapsed: Set<string>): ElementDefinition[] {
+  const ids = new Set(nodes.map((n) => n.id));
+  const rootIds = new Set(roots);
+  const node = (n: GraphNode, extra: Record<string, unknown> = {}, classes = "") => ({
+    data: { id: n.id, name: n.name, label: n.name, kind: n.label, colour: styleOf(n.label).colour, shape: styleOf(n.label).shape, ...extra },
+    classes: [rootIds.has(n.id) ? "root" : "", classes].join(" ").trim(),
+  });
+  const shown = edges.filter((e) => ids.has(e.source) && ids.has(e.target));
+  if (!grouped) {
+    return [
+      ...nodes.map((n) => node(n)),
+      ...shown.map((e) => ({
+        data: { id: edgeKey(e), source: e.source, target: e.target, type: e.type,
+                label: e.superseded || e.stale ? `${e.type} · ${e.superseded ? "superseded" : "stale"}` : e.type },
+        classes: [e.superseded || e.stale ? "old" : "", overview ? "overview" : ""].join(" ").trim(),
+      })),
+    ];
+  }
+  const parentOf = new Map<string, string>();
+  shown.filter((e) => e.type === "OWNS").forEach((e) => parentOf.set(e.target, e.source));
+  const children = new Map<string, number>();
+  parentOf.forEach((team) => children.set(team, (children.get(team) ?? 0) + 1));
+  const rep = (id: string) => (collapsed.has(parentOf.get(id) ?? "") ? parentOf.get(id)! : id);
+  // deterministic grid (force-directed boxes overlap when teams depend on each other): one cell per team, its
+  // services in a small grid inside; services without an owner get their own row, outside every box
+  const teams = nodes.filter((n) => n.label === "Team").sort((a, b) => a.name.localeCompare(b.name));
+  const members = new Map<string, GraphNode[]>(teams.map((t) => [t.id, []]));
+  const loose: GraphNode[] = [];
+  nodes.filter((n) => n.label !== "Team").sort((a, b) => a.name.localeCompare(b.name))
+    .forEach((n) => { const t = parentOf.get(n.id); if (t && members.has(t)) members.get(t)!.push(n); else loose.push(n); });
+  const maxMembers = Math.max(1, ...[...members.values()].map((m) => m.length));
+  const inner = Math.ceil(Math.sqrt(maxMembers));
+  const [dx, dy] = [120, 85];
+  const [cellW, cellH] = [inner * dx + 90, Math.ceil(maxMembers / inner) * dy + 90];
+  // services without an owner get the first cell, in a dashed "No owner" box (the orphans of scenario 3)
+  const cells: string[] = [...(loose.length ? [UNOWNED] : []), ...teams.map((t) => t.id)];
+  if (loose.length) members.set(UNOWNED, loose);
+  const perRow = Math.max(1, Math.ceil(Math.sqrt(cells.length)));
+  const pos = new Map<string, { x: number; y: number }>();
+  cells.forEach((cell, i) => {
+    const [cx, cy] = [(i % perRow) * cellW, Math.floor(i / perRow) * cellH];
+    pos.set(cell, { x: cx + cellW / 2 - 45, y: cy + cellH / 2 - 45 });
+    members.get(cell)!.forEach((m, k) => pos.set(m.id, { x: cx + (k % inner) * dx, y: cy + Math.floor(k / inner) * dy }));
+  });
+
+  const els: ElementDefinition[] = [];
+  if (loose.length) els.push({ data: { id: UNOWNED, name: "No owner", label: "No owner", kind: "Group" }, classes: "unowned" });
+  for (const n of nodes) {
+    const team = parentOf.get(n.id);
+    if (team && collapsed.has(team)) continue;
+    if (n.label === "Team" && collapsed.has(n.id)) els.push({ ...node(n, { label: `${n.name} · ${children.get(n.id) ?? 0}` }, "collapsed"), position: pos.get(n.id) });
+    else if (n.label === "Team" && (children.get(n.id) ?? 0) > 0) els.push(node(n)); // a box: positioned by its services
+    else els.push({ ...node(n, team ? { parent: team } : n.label !== "Team" ? { parent: UNOWNED } : {}), position: pos.get(n.id) });
+  }
+  const combined = new Map<string, { source: string; target: string; count: number; meta: boolean }>();
+  for (const e of shown) {
+    if (e.type === "OWNS") continue;
+    const source = rep(e.source), target = rep(e.target);
+    if (source === target) continue;
+    const key = `${e.type}:${source}->${target}`;
+    const c = combined.get(key) ?? { source, target, count: 0, meta: false };
+    c.count += 1;
+    c.meta ||= source !== e.source || target !== e.target;
+    combined.set(key, c);
+  }
+  combined.forEach((c, key) => els.push({
+    data: { id: key, source: c.source, target: c.target, type: key.slice(0, key.indexOf(":")), label: "", count: c.count },
+    classes: c.meta ? "overview meta" : "overview",
+  }));
+  return els;
+}
+
 /** Fit the graph, but never blow a small evidence graph up past 125%. */
 function fitCapped(c: Core | null) {
   if (!c || !c.elements().length) return;
-  c.fit(undefined, 48);
+  c.fit(undefined, 64); // room for the legend and toolbar overlays
   if (c.zoom() > 1.25) { c.zoom(1.25); c.center(); }
 }
 
@@ -73,6 +160,9 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
   const [hiddenLabels, setHiddenLabels] = useState<Set<string>>(new Set());
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
+  const [grouped, setGrouped] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(true);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [tip, setTip] = useState<{ x: number; y: number; name: string; label: string; id: string } | null>(null);
   const handlers = useRef({ onSelect });
   useEffect(() => { handlers.current = { onSelect }; }, [onSelect]);
@@ -87,13 +177,19 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
       if (disposed || !container.current) return;
       try { cytoscape.use(fcose); } catch { /* already registered (fast refresh) */ }
       cy.current = cytoscape({ container: container.current, style: STYLE as never, minZoom: 0.15, maxZoom: 2.5 });
-      cy.current.on("tap", "node", (e) => handlers.current.onSelect(e.target.id()));
+      cy.current.on("tap", "node", (e) => { if (!e.target.id().startsWith("group:")) handlers.current.onSelect(e.target.id()); });
       cy.current.on("tap", (e) => { if (e.target === cy.current) handlers.current.onSelect(null); });
       cy.current.on("mouseover", "node", (e) => {
+        if (e.target.id().startsWith("group:")) return;
         const p = e.target.renderedPosition();
         setTip({ x: p.x, y: p.y, name: e.target.data("name"), label: e.target.data("kind"), id: e.target.id() });
       });
       cy.current.on("mouseout", "node", () => setTip(null));
+      cy.current.on("dbltap", "node", (e) => {
+        if (e.target.data("kind") !== "Team") return;
+        const id = e.target.id();
+        setCollapsed((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+      });
       cy.current.on("viewport", () => setTip(null));
       // the right panel opening or closing changes the canvas size: re-measure and re-fit
       const ro = new ResizeObserver(() => { cy.current?.resize(); fitCapped(cy.current); });
@@ -117,33 +213,24 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
 
   const overview = useMemo(() => !roots.length && edges.every((e) => e.type === "DEPENDS_ON" || e.type === "OWNS"), [roots, edges]);
 
+  // team grouping applies to the overview only, and not while Team is filtered out
+  const groupedNow = overview && grouped && !hiddenLabels.has("Team");
+
   // new elements: replace and lay out (instance kept)
   useEffect(() => {
     const c = cy.current;
     if (!c || !ready) return;
-    const ids = new Set(nodes.map((n) => n.id));
-    const rootIds = new Set(roots);
-    const els: ElementDefinition[] = [
-      ...nodes.map((n) => ({
-        data: { id: n.id, name: n.name, label: n.name, kind: n.label, colour: styleOf(n.label).colour, shape: styleOf(n.label).shape },
-        classes: rootIds.has(n.id) ? "root" : "",
-      })),
-      ...edges.filter((e) => ids.has(e.source) && ids.has(e.target)).map((e) => ({
-        data: { id: edgeKey(e), source: e.source, target: e.target, type: e.type,
-                label: e.superseded || e.stale ? `${e.type} · ${e.superseded ? "superseded" : "stale"}` : e.type },
-        classes: [e.superseded || e.stale ? "old" : "", overview ? "overview" : ""].join(" ").trim(),
-      })),
-    ];
+    const els = buildElements(nodes, edges, roots, overview, groupedNow, collapsed);
     c.batch(() => { c.elements().remove(); c.add(els); });
-    c.layout(layoutOptions(layout, c, roots, nodes.length)).run();
+    c.layout(layoutOptions(layout, c, roots, nodes.length, groupedNow)).run();
     fitCapped(c);
-  }, [nodes, edges, roots, ready, overview]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodes, edges, roots, ready, overview, groupedNow, collapsed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // layout switch only
   useEffect(() => {
     const c = cy.current;
     if (!c || !ready || !c.nodes().length) return;
-    c.layout(layoutOptions(layout, c, roots, c.nodes().length)).run();
+    c.layout(layoutOptions(layout, c, roots, c.nodes().length, groupedNow)).run();
     fitCapped(c);
   }, [layout]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -215,8 +302,11 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
       {/* labels and relationships (bottom-left) */}
       {(labelCounts.length > 0) && (
         <div className="absolute bottom-3 left-3 z-10 max-h-[calc(100%-5rem)] w-48 overflow-auto rounded-md border border-line bg-panel p-2 text-xs shadow-sm">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-3">Labels</p>
-          {labelCounts.map(([label, n]) => (
+          <button onClick={() => setLegendOpen((v) => !v)} aria-expanded={legendOpen}
+                  className="mb-1 flex w-full items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-ink-3 hover:text-ink">
+            Labels{legendOpen ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+          </button>
+          {legendOpen && labelCounts.map(([label, n]) => (
             <button key={label} onClick={() => toggle(hiddenLabels, label, setHiddenLabels)} aria-pressed={!hiddenLabels.has(label)}
                     className={`flex w-full items-center gap-1.5 rounded px-1 py-0.5 hover:bg-raised ${hiddenLabels.has(label) ? "opacity-40" : ""}`}>
               <ShapeSwatch label={label} />
@@ -225,8 +315,8 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
               {hiddenLabels.has(label) ? <EyeOff size={12} className="text-ink-3" /> : <Eye size={12} className="text-ink-3" />}
             </button>
           ))}
-          {typeCounts.length > 0 && <p className="mb-1 mt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">Relationships</p>}
-          {typeCounts.map(([type, n]) => (
+          {legendOpen && typeCounts.length > 0 && <p className="mb-1 mt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">Relationships</p>}
+          {legendOpen && typeCounts.map(([type, n]) => (
             <button key={type} onClick={() => toggle(hiddenTypes, type, setHiddenTypes)} aria-pressed={!hiddenTypes.has(type)}
                     className={`flex w-full items-center gap-1.5 rounded px-1 py-0.5 hover:bg-raised ${hiddenTypes.has(type) ? "opacity-40" : ""}`}>
               <span className="h-px w-3 bg-ink-3" aria-hidden />
@@ -252,6 +342,18 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
           ))}
         </div>
         <span className="my-0.5 h-px w-5 bg-line" aria-hidden />
+        {overview && (
+          <>
+            <IconButton label="Group by team" active={grouped} onClick={() => setGrouped((v) => !v)}><Boxes size={16} /></IconButton>
+            {grouped && (
+              <IconButton label={collapsed.size ? "Expand all teams" : "Collapse all teams"} active={collapsed.size > 0}
+                          onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(nodes.filter((n) => n.label === "Team").map((n) => n.id)))}>
+                <ChevronsDownUp size={16} />
+              </IconButton>
+            )}
+            <span className="my-0.5 h-px w-5 bg-line" aria-hidden />
+          </>
+        )}
         <IconButton label="Dim (d)" active={dim} onClick={() => setDim((v) => !v)}><SunDim size={16} /></IconButton>
       </div>
 
