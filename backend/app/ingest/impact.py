@@ -11,7 +11,7 @@ Only facts that actually changed (created or ended) count, so re-ingesting a doc
 from falkordb import Graph
 
 from backend.app.actions.actions import propose
-from backend.app.actions.gate import STALE, current_decisions
+from backend.app.actions.gate import STALE, current_decisions, is_current
 
 CHANGE_TYPES = {"OWNS", "ON_CALL_FOR", "DEPENDS_ON"}
 
@@ -47,7 +47,7 @@ def change_impact(graph: Graph, report: dict) -> dict:
         stale = [{"document": d, "title": t, "cites": old, "superseded_by": new}
                  for d, t, _, old, new in graph.ro_query(STALE, {"service": name}).result_set]
         constraints = [{"decision": d["id"], "title": d["title"], "forbids": d["forbids"], "sources": d["sources"]}
-                       for d in current_decisions(graph, name) if not d["superseded_by"]]
+                       for d in current_decisions(graph, name) if is_current(d)]
         what = [f["fact"] for f in changes if svc in _service_of(f["fact"])]
         impact = {
             "service": svc, "changed": what, "owner_now": team_id, "on_call_now": person_id,

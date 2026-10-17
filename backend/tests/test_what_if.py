@@ -36,5 +36,5 @@ def test_service_decommissioned_lists_dependents(loaded, acme):
 
 
 def test_wrong_entity_kind_is_rejected(loaded):
-    with pytest.raises(ValueError):
-        run_tool(T, "what_if", {"scenario": "person_leaves", "entity": "svc:payments-api"})
+    r = run_tool(T, "what_if", {"scenario": "person_leaves", "entity": "svc:payments-api"})
+    assert r.outcome == "unknown_entity" and r.data["labels"] == ["Person"]  # no clone was made, nothing simulated

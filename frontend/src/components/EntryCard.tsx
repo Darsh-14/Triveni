@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleX, LoaderCircle } from "lucide-react";
-import { api, type Doc, type ProgressEvent, type Step, type Track, type Verification } from "@/lib/api";
+import { api, type Doc, type Guard, type ProgressEvent, type Step, type Track, type Verification } from "@/lib/api";
 import { docKindOfId, ID_PATTERN } from "@/lib/entities";
 import Callouts from "./Callouts";
 import StepTimeline from "./StepTimeline";
@@ -23,6 +23,7 @@ export interface Entry {
   episode?: string;
   restored?: boolean;
   verification?: Verification;
+  guard?: Guard;  // the model's draft was rejected by the proof check and replaced by the tool results
   startedAt?: number;
   ms?: number; // total time once done
   progress?: ProgressEvent[];
@@ -82,6 +83,20 @@ function VerdictChip({ v }: { v: Verification }) {
     <Chip tone={tone}>
       <Icon size={12} aria-hidden />{word}{v.verdict !== "no_citations" && <span className="tabular-nums"> {v.grounded.length}/{v.cited}</span>}
     </Chip>
+  );
+}
+
+/** The proof check rejected the model's draft (it named something no tool returned); the answer shown is the tools'. */
+function GuardNotice({ guard }: { guard: Guard }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-2 rounded-md border border-warn/30 bg-warn-soft px-2 py-1.5 text-xs text-warn">
+      <p>
+        <span className="font-semibold">Model draft rejected</span>: it {guard.reason}. Showing only what the graph tools
+        returned. <button onClick={() => setOpen(!open)} className="underline">{open ? "hide" : "show"} draft</button>
+      </p>
+      {open && <p className="mt-1 whitespace-pre-wrap text-ink-3 line-through decoration-warn/40">{guard.draft}</p>}
+    </div>
   );
 }
 
@@ -226,6 +241,8 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
           {entry.verification.unknown.map((id) => <Chip key={id} tone="bad">{id}</Chip>)}
         </div>
       )}
+
+      {entry.guard && <GuardNotice guard={entry.guard} />}
 
       {showSteps && (
         <StepTimeline steps={entry.steps} events={entry.progress ?? []} totalMs={entry.ms} focusStep={focusStep}

@@ -16,6 +16,11 @@ deployments, incidents, decisions and documents.
 
 How to work:
 - Use tools for every factual claim. If the graph has no answer, say so; why_not can prove an absence.
+- Pass names as the user wrote them; tools resolve them against the graph. Every result has an `outcome`:
+  answered, from_memory, not_in_graph (the entity exists, the fact does not), or unknown_entity (the name matches
+  nothing; suggestions are listed). On unknown_entity, say the name is not in the graph and offer the suggestions;
+  never treat it as "nothing is affected", and never retry with a guessed name.
+- For one incident, person, team or decision (what caused it, what they work on, what it governs), use describe.
 - Questions usually need several tools (for an outage: blast radius, the owner/on-call to page, recent deploys or
   similar incidents, governing decisions). Call independent tools in parallel.
 - Before proposing a change to a service, check decision_trail with the action so a current decision is respected.
@@ -31,7 +36,10 @@ How to work:
 Answer format:
 - Lead with the direct answer (what is affected, who to page, what to do), then the supporting facts.
 - Cite evidence inline: entity ids (svc:..., per:..., inc:...) and source documents in brackets, e.g. [doc:pm-0042].
-- Only state facts that a tool returned. Keep it short enough to read during an incident."""
+- Only state facts that a tool returned. Keep it short enough to read during an incident.
+- Name only entities that appear in a tool result or in the question. Every service, person and team you name is
+  checked by code against the graph and this run's tool results; an answer naming anything else is rejected and
+  replaced by the raw tool results."""
 
 
 def main() -> None:

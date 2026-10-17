@@ -22,6 +22,7 @@ from backend.app.tools.base import ToolResult, edge_ref, tool
     tracks=("02",),
     read_only=False,
     needs_agent=True,
+    entities={"incident": (("Incident",), "id")},
 )
 def handoff(graph, incident: str, summary: str, request: str, agent: str) -> ToolResult:
     h = create_handoff(graph, agent, incident, summary, request)

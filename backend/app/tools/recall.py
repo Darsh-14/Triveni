@@ -1,6 +1,7 @@
 """recall (Track 02): past episodes that share graph entities with the current problem, with their lessons and
 procedures (and how often each procedure worked)."""
 from backend.app.memory.recall import EXPAND, RECALL, recall as recall_episodes
+from backend.app.graph.resolve import ANY
 from backend.app.tools.base import ToolResult, edge_ref, tool
 
 
@@ -20,6 +21,7 @@ from backend.app.tools.base import ToolResult, edge_ref, tool
         "additionalProperties": False,
     },
     tracks=("02",),
+    entities={"entities": (ANY, "id")},
 )
 def recall(graph, entities: list[str], limit: int = 5) -> ToolResult:
     ids = [e if ":" in e else f"svc:{e}" for e in entities]
@@ -39,4 +41,5 @@ def recall(graph, entities: list[str], limit: int = 5) -> ToolResult:
                    + (f" Lessons decay with a {found['half_life_days']:g}-day half-life"
                       + (f"; faded: {', '.join(faded)}." if faded else ".") if found["episodes"] else ""))
     return ToolResult(data=found, cypher=EXPAND.strip() + "\n\n" + RECALL.strip(),
-                      params={"ids": found["expanded"], "limit": limit}, paths=paths, explanation=explanation)
+                      params={"ids": found["expanded"], "limit": limit}, paths=paths, explanation=explanation,
+                      outcome="from_memory" if found["episodes"] else "not_in_graph")

@@ -24,6 +24,7 @@ from backend.app.tools.base import ToolResult, edge_ref, tool
     tracks=("01",),
     read_only=False,
     needs_agent=True,
+    entities={"target": (("Service",), "id")},
 )
 def propose_action(graph, kind: str, target: str, reason: str, agent: str, title: str | None = None) -> ToolResult:
     a = propose(graph, agent, kind, target, reason, {"title": title} if title else None)

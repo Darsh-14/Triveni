@@ -36,6 +36,7 @@ SERVICE_OF = "MATCH (i:Incident {id: $incident})-[:AFFECTED]->(s:Service) RETURN
         "additionalProperties": False,
     },
     tracks=("03", "02"),
+    entities={"service": (("Service",), "name"), "incident": (("Incident",), "id")},
 )
 def similar_incidents(graph, service: str | None = None, incident: str | None = None, limit: int = 5) -> ToolResult:
     cypher = CANDIDATES.strip()

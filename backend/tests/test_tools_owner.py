@@ -26,4 +26,5 @@ def test_billing_batch_has_no_oncall(loaded):
 
 
 def test_unknown_service(loaded):
-    assert run_tool("test_acme", "owner_of", {"service": "no-such-svc"}).data == {"found": False, "service": "no-such-svc"}
+    r = run_tool("test_acme", "owner_of", {"service": "no-such-svc"})
+    assert r.outcome == "unknown_entity" and r.data["found"] is False and r.data["query"] == "no-such-svc"

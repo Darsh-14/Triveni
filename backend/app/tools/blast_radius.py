@@ -32,6 +32,7 @@ RETURN s.id, t.id, t.name, p.id, p.name, o.source_doc, c.source_doc
         "additionalProperties": False,
     },
     tracks=("01",),
+    entities={"service": (("Service",), "name")},
 )
 def blast_radius(graph, service: str, depth: int = 3) -> ToolResult:
     if depth not in ALLOWED_DEPTHS:

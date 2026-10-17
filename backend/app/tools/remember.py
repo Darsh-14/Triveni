@@ -1,6 +1,7 @@
 """remember (Track 02, write tool): store what happened as an Episode, with an optional Lesson and Procedure.
 The acting agent is set by the server, never by the model."""
 from backend.app.memory.remember import CONTRADICT, EPISODE, LESSON, PROCEDURE, PROCEDURE_FOR, remember as store
+from backend.app.graph.resolve import ANY
 from backend.app.tools.base import ToolResult, edge_ref, tool
 
 
@@ -27,6 +28,7 @@ from backend.app.tools.base import ToolResult, edge_ref, tool
     tracks=("02",),
     read_only=False,
     needs_agent=True,
+    entities={"involved": (ANY, "id")},
 )
 def remember(graph, question: str, outcome: str, involved: list[str], agent: str, lesson: str | None = None,
              procedure_name: str | None = None, procedure_steps: list[str] | None = None,

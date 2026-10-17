@@ -231,7 +231,7 @@ def test_ui_mode_does_not_wait_out_rate_limits(loaded):
                                     progress=events.append))
     assert r.model == "gemini:g" and len(groq.client.requests) == 1  # one try on groq, no wait, no retry
     assert "groq unavailable (rate limited), falling back" in events
-    assert events[0].startswith("starting the MCP server") and events[-1].startswith("checking every cited id")
+    assert events[0].startswith("starting the MCP server") and events[-1].startswith("checking every entity")
 
 
 def test_progress_reports_each_tool_call(loaded):

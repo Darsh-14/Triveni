@@ -65,6 +65,8 @@ def propose(graph: Graph, agent: str, kind: str, target: str, reason: str, detai
     status = "proposed" if gate["allowed"] else "blocked"
     aid, ts = new_id("action"), now()
     args = json.dumps({"reason": reason, **(details or {})})
+    if not graph.ro_query("MATCH (s:Service {id: $id}) RETURN s.id", {"id": f"svc:{service}"}).result_set:
+        raise ValueError(f"no service svc:{service} in this tenant; nothing was proposed")  # never report a phantom action
     graph.query(PROPOSE, {"id": aid, "kind": kind, "status": status, "ts": ts, "args": args, "agent": agent,
                           "target": f"svc:{service}", "episode": episode or "", "blockers": gate["blocked_by"]})
     return {"id": aid, "kind": kind, "target": f"svc:{service}", "status": status, "blocked_by": gate["blocked_by"]}
@@ -82,7 +84,10 @@ def decide(graph: Graph, action_id: str, person: str, approve: bool) -> dict:
     target = graph.ro_query("MATCH (:Action {id: $id})-[:TARGETS]->(s) RETURN s.id", {"id": action_id}).result_set[0][0]
     team, oncall, oncall_name = graph.ro_query(OWNER, {"target": target}).result_set[0]
     message = {"action": action_id, "kind": kind, "target": target, "approved_by": person, "ts": now(),
-               "to": {"create_ticket": f"ticket queue of team {team}", "notify_owner": f"{oncall_name} ({oncall})"}.get(kind, team),
+               "to": {"create_ticket": f"ticket queue of team {team or 'unowned'}",
+                      # nobody on call: the owning team's channel, never "None (None)"
+                      "notify_owner": f"{oncall_name} ({oncall})" if oncall else f"team {team or 'unowned'} (nobody on call)",
+                      }.get(kind, team or "unowned"),
                **json.loads(args)}
     OUTBOX.mkdir(parents=True, exist_ok=True)
     file = OUTBOX / f"{action_id.replace(':', '-')}.json"

@@ -10,6 +10,7 @@ import uuid
 
 from backend.app.graph.client import get_db
 from backend.app.graph.projections import refresh_projections
+from backend.app.graph.resolve import FACT_LABELS
 from backend.app.tools.base import ToolResult, edge_ref, ro, tool
 from backend.app.tools.blast_radius import blast_radius
 from backend.app.tools.find_orphans import find_orphans
@@ -65,6 +66,7 @@ def _snapshot(graph) -> dict:
         "additionalProperties": False,
     },
     tracks=("01", "03"),
+    entities={"entity": (lambda a: (SCENARIOS[a["scenario"]][0],) if a.get("scenario") in SCENARIOS else FACT_LABELS, "id")},
 )
 def what_if(graph, scenario: str, entity: str) -> ToolResult:
     if scenario not in SCENARIOS:

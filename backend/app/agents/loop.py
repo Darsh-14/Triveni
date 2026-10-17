@@ -21,10 +21,10 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from backend.app.graph.tenant import get_graph
-from backend.app.llm.providers import ProviderUnavailable, make, provider_order
+from backend.app.llm.providers import ProviderUnavailable, RulesProvider, make, provider_order
 from backend.app.memory.conversation import append_message, load_history, start_conversation
 from backend.app.memory.remember import remember
-from backend.app.agents.verify import evidence_ids, verify
+from backend.app.agents.verify import evidence_ids, guard, verify
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -44,6 +44,8 @@ class Step:
     ms: int
     via: str = "mcp"
     data: dict = field(default_factory=dict)  # the tool's result data, so the UI can render it (owner, recall, changes)
+    outcome: str = ""  # answered | from_memory | not_in_graph | unknown_entity | recorded (tools/base.py)
+    resolved: list[dict] = field(default_factory=list)  # how typed names were matched to graph nodes
 
 
 @dataclass
@@ -58,6 +60,7 @@ class AgentResult:
     episode: str = ""  # memory written for this answer (by the model via `remember`, or automatically)
     tokens: int = 0   # model tokens used for this answer
     verification: dict = field(default_factory=dict)  # deterministic proof check of the answer (verify.py)
+    guard: dict = field(default_factory=dict)  # set when the model's draft was rejected: {"reason", "draft"}
 
     @property
     def tracks(self) -> list[str]:
@@ -87,7 +90,9 @@ async def _run_with(provider, session, tools, question, tenant, system, history,
     result = AgentResult(question=question, tenant=tenant, answer="", model=provider.name)
     messages = list(history or []) + [provider.user(question)]
     # what the answer may cite: ids the user gave (question + earlier turns) and ids any tool returned this run
-    result._evidence = evidence_ids(question + " " + " ".join(str(m.get("content", "")) for m in history or []))
+    result._context = question + "\n" + "\n".join(str(m.get("content", "")) for m in history or [])
+    result._evidence = evidence_ids(result._context)
+    result._evidence_text = []  # tool results as text: plainly named entities in them count as evidence too
     for n in range(max_turns):
         progress(f"{provider.name}: thinking" + (f" (round {n + 1})" if n else ""))
         turn = await provider.turn(system, messages, tools)
@@ -109,6 +114,7 @@ async def _run_with(provider, session, tools, question, tenant, system, history,
                 is_error, sc = bool(res.is_error), res.structured_content or {}
                 if sc and not is_error:
                     result._evidence |= evidence_ids(json.dumps(sc, default=str))
+                    result._evidence_text.append(json.dumps({k: sc.get(k) for k in ("explanation", "data")}, default=str))
                 text = res.content[0].text if res.content else ""
                 if sc and not is_error:
                     text = for_model(sc)
@@ -116,7 +122,8 @@ async def _run_with(provider, session, tools, question, tenant, system, history,
                 tool=call.name, input=call.args or {}, why=turn.text, ok=not is_error,
                 explanation=sc.get("explanation", text if is_error else ""), tracks=sc.get("tracks", []),
                 sources=sc.get("sources", []), cypher=sc.get("cypher", ""), params=sc.get("params", {}),
-                paths=sc.get("paths", []), ms=ms, data=sc.get("data", {}) if not is_error else {}))
+                paths=sc.get("paths", []), ms=ms, data=sc.get("data", {}) if not is_error else {},
+                outcome=sc.get("outcome", "" if not is_error else "error"), resolved=sc.get("resolved", [])))
             outputs.append((call, text, is_error))
         messages.extend(provider.tool_results(outputs))
     result.answer = "Stopped: too many tool rounds without a final answer."
@@ -129,14 +136,15 @@ MAX_HISTORY = 8          # earlier messages of the conversation sent to the mode
 
 
 def for_model(sc: dict) -> str:
-    """What the model sees of a tool result: explanation, data, sources. The UI keeps the full provenance
-    (cypher, params, paths) from structured_content. Large data is cut, and the cut is marked."""
-    text = json.dumps({k: sc.get(k) for k in ("explanation", "data", "sources")}, default=str)
+    """What the model sees of a tool result: its explicit outcome, explanation, data, sources. The UI keeps the full
+    provenance (cypher, params, paths) from structured_content. Large data is cut, and the cut is marked."""
+    head = {k: sc[k] for k in ("outcome",) if sc.get(k)}  # "unknown_entity" / "not_in_graph" must reach the model
+    text = json.dumps(head | {k: sc.get(k) for k in ("explanation", "data", "sources")}, default=str)
     if len(text) <= MAX_RESULT_CHARS:
         return text
     data = json.dumps(sc.get("data"), default=str)[: MAX_RESULT_CHARS - 600]
-    return json.dumps({"explanation": sc.get("explanation"), "sources": sc.get("sources"),
-                       "data_truncated": data + " ...(truncated; ask a narrower question for more)"})
+    return json.dumps(head | {"explanation": sc.get("explanation"), "sources": sc.get("sources"),
+                              "data_truncated": data + " ...(truncated; ask a narrower question for more)"})
 
 
 def _involved(result: AgentResult) -> list[str]:
@@ -181,6 +189,9 @@ async def run_agent(question: str, tenant: str, system: str, history: list | Non
     progress: called with short status lines (provider tried, tool called, fallbacks) for a live status display."""
     progress = progress or (lambda _msg: None)
     providers = providers if providers is not None else [make(n, max_wait=max_wait) for n in provider_order()]
+    for p in providers:  # the rules planner spots entities by name in this tenant's graph
+        if isinstance(p, RulesProvider) and p.tenant is None:
+            p.tenant = tenant
     if history is None:
         history = history_messages(tenant, conversation_id)
     failed: list[str] = []
@@ -204,11 +215,28 @@ async def run_agent(question: str, tenant: str, system: str, history: list | Non
             await close()
     result = result or AgentResult(question=question, tenant=tenant, answer="No provider could answer.")
     result.fallbacks = failed
-    progress("checking every cited id against the graph")
-    result.verification = verify(get_graph(tenant), result.answer, getattr(result, "_evidence", set()))
+    progress("checking every entity the answer names against the graph")
+    graph = get_graph(tenant)
+    context, evidence_text = getattr(result, "_context", question), "\n".join(getattr(result, "_evidence_text", []))
+    result.verification = verify(graph, result.answer, getattr(result, "_evidence", set()), context, evidence_text)
+    if reason := guard(result.verification):
+        # a wrong name is worse than a flatter answer: show only what the tools returned, keep the draft for inspection
+        progress(f"draft rejected ({reason}); answering from the tool results only")
+        result.guard = {"reason": reason, "draft": result.answer, "draft_verification": result.verification}
+        result.answer = compose_answer(result.steps)
+        result.verification = verify(graph, result.answer, getattr(result, "_evidence", set()), context, evidence_text)
     if persist:
         _persist(tenant, agent, user_id, conversation_id, result)
     return result
+
+
+def compose_answer(steps: list[Step]) -> str:
+    """An answer built only from tool results (deterministic): each tool's explanation, with its explicit outcome."""
+    lines = [s.explanation for s in steps if s.ok and s.explanation]
+    if not lines:
+        return ("No graph evidence was gathered for this question, so no answer is given. Name a service, person, "
+                "team or incident (e.g. payments-api, Priya Nair, Team Ledger, inc:0042).")
+    return "From the graph tools only:\n- " + "\n- ".join(dict.fromkeys(lines))
 
 
 def _reason(exc: Exception) -> str:

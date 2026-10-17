@@ -8,6 +8,17 @@ import type { ProgressEvent, Step } from "@/lib/api";
    Start times come from the live progress events ("calling X over MCP" at t seconds); a direct tool run or a
    restored answer has none, so its bars are laid end to end. */
 
+// What each tool's result means, stated by the tool itself (tools/base.py): an empty traversal is never "safe".
+const OUTCOME: Record<string, { label: string; cls: string; title: string }> = {
+  unknown_entity: { label: "unknown name", cls: "text-bad", title: "The name matches nothing in this graph; the tool did not run" },
+  not_in_graph: { label: "absent", cls: "text-warn", title: "The entity exists; the fact asked about is not in the graph" },
+  from_memory: { label: "from memory", cls: "text-accent", title: "Answered from earlier episodes" },
+  recorded: { label: "recorded", cls: "text-ok", title: "Written to the graph" },
+};
+
+const resolvedTitle = (s: Step) =>
+  (s.resolved ?? []).filter((r) => r.query !== r.id).map((r) => `"${r.query}" -> ${r.id} (${r.how.replace("_", " ")})`).join("; ");
+
 function startTimes(steps: Step[], events: ProgressEvent[]): number[] {
   const calls = events.map((e) => ({ tool: /calling (\S+) over MCP/.exec(e.msg)?.[1], ms: e.t * 1000 })).filter((c) => c.tool);
   let cursor = 0;
@@ -36,8 +47,15 @@ export default function StepTimeline({ steps, events, totalMs, focusStep, onStep
         {steps.map((s, i) => (
           <li key={i} className={`grid grid-cols-[1rem_minmax(0,9.5rem)_1fr_3.5rem_1.25rem] items-center gap-2 px-2 py-1.5 text-xs ${focusStep === i ? "bg-accent-soft" : ""}`}>
             <span className="tabular-nums text-ink-3">{i + 1}</span>
-            <button onClick={() => onStep(focusStep === i ? null : i)} title={s.explanation} className="min-w-0 text-left">
-              <span className={`block truncate font-mono font-medium ${s.ok ? "text-ink" : "text-bad"}`}>{s.tool}</span>
+            <button onClick={() => onStep(focusStep === i ? null : i)}
+                    title={[s.explanation, resolvedTitle(s)].filter(Boolean).join(" | resolved: ")} className="min-w-0 text-left">
+              <span className={`block truncate font-mono font-medium ${s.ok ? "text-ink" : "text-bad"}`}>
+                {s.tool}
+                {s.outcome && OUTCOME[s.outcome] && (
+                  <span className={`ml-1.5 font-sans text-[10px] font-semibold uppercase ${OUTCOME[s.outcome].cls}`}
+                        title={OUTCOME[s.outcome].title}>{OUTCOME[s.outcome].label}</span>
+                )}
+              </span>
               <span className="block truncate font-mono text-[11px] text-ink-3">{Object.values(s.input).map(String).join(" · ")}</span>
             </button>
             <button onClick={() => onStep(focusStep === i ? null : i)} aria-label={`Highlight step ${i + 1}`}

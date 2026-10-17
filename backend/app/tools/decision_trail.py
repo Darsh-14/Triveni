@@ -18,6 +18,7 @@ from backend.app.tools.base import ToolResult, edge_ref, ro, tool
         "additionalProperties": False,
     },
     tracks=("03", "01"),
+    entities={"service": (("Service",), "name")},
 )
 def decision_trail(graph, service: str, action: str | None = None) -> ToolResult:
     service = service.removeprefix("svc:")

@@ -28,6 +28,7 @@ RETURN s.id, doc.id, doc.title, old.id, newer.id
         "additionalProperties": False,
     },
     tracks=("03",),
+    entities={"team": (("Team",), "id")},
 )
 def team_services(graph, team: str) -> ToolResult:
     team = team.removeprefix("Team ").strip()

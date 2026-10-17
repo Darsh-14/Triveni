@@ -212,33 +212,64 @@ class AnthropicProvider:
 # --------------------------------------------------------------------------- rules (no model)
 SERVICE_RE = re.compile(r"\b[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b")
 ID_RE = re.compile(r"\b(?:per|svc|inc|adr|team):[a-z0-9-]+\b")
+PREFIX_LABEL = {"per": "Person", "svc": "Service", "inc": "Incident", "adr": "Decision", "team": "Team"}
 
 
 class RulesProvider:
-    """Deterministic planner for when no model is reachable. It still calls tools over MCP; it just
-    chooses them with keyword rules instead of a model, and says so in its answer."""
+    """Deterministic planner for when no model is reachable. It still calls tools over MCP; it just chooses them with
+    rules instead of a model, and says so in its answer.
 
-    def __init__(self):
+    Entities come from the tenant's graph (graph/resolve.spot: "Payments API", "Priya", "Team Ledger", "incident 42",
+    "ADR-019"), not from a slug regex, so plain phrasing works. Intent comes from keywords, checked from most specific
+    (counterfactual, handoff, two-entity connection) to least specific (describe the one entity named). Every argument
+    is still resolved again by the tool layer, so a wrong guess becomes an explicit unknown_entity, never a fake answer.
+    """
+
+    ACTIONS = (("retry", "change_retry_policy"), ("timeout", "raise_timeout"), ("rerun", "rerun_without_reconciliation"))
+
+    def __init__(self, tenant: str | None = None):
         self.name, self.model = "rules", "rules"
+        self.tenant = tenant  # set by the agent loop: enables spotting entities by name in the graph
         self.planned = False
 
     def user(self, text: str) -> dict:
         return {"role": "user", "content": text}
 
     @staticmethod
-    def plan(question: str) -> list[tuple[str, dict]]:
+    def _regex_entities(question: str) -> list[dict]:
+        """Fallback without a graph: typed ids and service-like slugs."""
         q = question.lower()
-        ids = ID_RE.findall(q)
-        services = [s for s in SERVICE_RE.findall(q) if not s.startswith(("on-call", "single-point"))]
-        svc = services[0] if services else None
-        # counterfactuals: "if Priya Nair leaves", "if Team Ledger is dissolved", "if we decommission pdf-renderer-v1"
-        if m := re.search(r"if ([a-z][a-z .'-]+?) (?:leaves|left|quits|resigns)", q):
-            return [("what_if", {"scenario": "person_leaves", "entity": m.group(1).strip()})]
-        if m := re.search(r"if (?:team )?([a-z][a-z-]+) (?:is |was |were )?(?:dissolved|disbanded)", q):
-            return [("what_if", {"scenario": "team_dissolved", "entity": m.group(1)})]
-        if m := re.search(r"decommission(?:ed)? ([a-z][a-z0-9-]+)|if ([a-z][a-z0-9-]+) (?:is |was )?decommissioned", q):
-            return [("what_if", {"scenario": "service_decommissioned", "entity": m.group(1) or m.group(2)})]
-        incident = next((i for i in ids if i.startswith("inc:")), None)
+        found = [{"id": i, "label": PREFIX_LABEL.get(i.split(":")[0], "?"), "name": i} for i in ID_RE.findall(q)]
+        named = {e["id"].split(":", 1)[1] for e in found}
+        found += [{"id": f"svc:{s}", "label": "Service", "name": s} for s in SERVICE_RE.findall(q)
+                  if not s.startswith(("on-call", "single-point")) and s not in named]
+        return found
+
+    @classmethod
+    def plan(cls, question: str, entities: list[dict] | None = None) -> list[tuple[str, dict]]:
+        q = question.lower()
+        ents = entities if entities is not None else cls._regex_entities(question)
+        of = lambda *labels: [e for e in ents if e["label"] in labels]  # noqa: E731
+        svcs, people, teams = of("Service"), of("Person"), of("Team")
+        incidents, decisions = of("Incident"), of("Decision")
+        svc = svcs[0]["id"].removeprefix("svc:") if svcs else None
+
+        # 1. counterfactuals: "if Priya Nair leaves", "if Team Ledger is dissolved", "if we decommission pdf-renderer-v1"
+        if re.search(r"\b(leaves|left|quits|resigns|leaving)\b", q):
+            who = people[0]["id"] if people else (m.group(1).strip() if (m := re.search(r"if ([a-z][a-z .'-]+?) (?:leaves|left|quits|resigns)", q)) else None)
+            if who:
+                return [("what_if", {"scenario": "person_leaves", "entity": who})]
+        if re.search(r"\b(dissolved|disbanded|dissolve|disband)\b", q):
+            team = teams[0]["id"] if teams else (m.group(1) if (m := re.search(r"if (?:team )?([a-z][a-z-]+) (?:is |was |were )?(?:dissolved|disbanded)", q)) else None)
+            if team:
+                return [("what_if", {"scenario": "team_dissolved", "entity": team})]
+        if re.search(r"decommission", q):
+            target = svc or (m.group(1) or m.group(2) if (m := re.search(r"decommission(?:ed)? ([a-z][a-z0-9-]+)|if ([a-z][a-z0-9-]+) (?:is |was )?decommissioned", q)) else None)
+            if target:
+                return [("what_if", {"scenario": "service_decommissioned", "entity": target})]
+
+        # 2. coordination: hand an incident to remediation; the remediation agent's own "handoff ..." follow-up
+        incident = incidents[0]["id"] if incidents else None
         if incident and re.search(r"hand ?off|escalate|remediat", q) and not q.startswith("handoff "):
             return [("handoff", {"incident": incident, "summary": question[:300], "request": "Investigate and propose a fix."})]
         if q.startswith("handoff ") and SERVICE_RE.search(q.split("affected:")[-1]):
@@ -246,44 +277,81 @@ class RulesProvider:
             return [("recall", {"entities": [f"svc:{svc_h}"]}), ("decision_trail", {"service": svc_h}),
                     ("propose_action", {"kind": "create_ticket", "target": svc_h,
                                         "reason": "Follow-up from handoff (rules mode)", "title": f"Follow up {incident or svc_h}"})]
-        if len(ids) >= 2 or (re.search(r"\b(connected|path|between|link)\b", q) and len(ids + services) >= 2):
-            a, b = (ids + services)[:2]
-            return [("shortest_path", {"from": a, "to": b, "mode": "any" if ":" in a + b else "dependency"})]
+
+        # 3. two entities: does A depend on B (current edges, with an absence proof), or how are they connected
+        if len(ents) >= 2 and (re.search(r"\b(connected|connection|path|between|link|linked|related|relate)\b", q)
+                               or (re.search(r"\bdepend", q) and len(svcs) >= 2)):
+            a, b = ents[0], ents[1]
+            if re.search(r"\bdepend", q) and a["label"] == b["label"] == "Service":
+                return [("why_not", {"kind": "depends", "service": a["id"].removeprefix("svc:"),
+                                     "other": b["id"].removeprefix("svc:")})]
+            return [("shortest_path", {"from": a["id"], "to": b["id"], "mode": "any"})]
+
+        # 4. whole-graph algorithms
         if re.search(r"single points? of (knowledge|failure)|key people|bus factor|knowledge silo", q):
             return [("key_people", {})]
-        if re.search(r"orphan|unowned|no owner|nobody owns", q):
+        if re.search(r"orphan|unowned|no owner|nobody owns|without (an )?owner", q):
             return [("find_orphans", {})]
-        if re.search(r"most (critical|important)|critical services", q):
+        if re.search(r"most (critical|important)|critical services|riskiest", q):
             return [("critical_services", {})]
-        if not svc:
-            return []
-        if re.search(r"\b(retry|change|modify|allowed|can we|decision|adr)\b", q):
-            action = "change_retry_policy" if "retry" in q else None
-            return [("decision_trail", {"service": svc, **({"action": action} if action else {})})]
-        if re.search(r"fail|down|outage|broken|timeout|error|slow|latency|affected|blast", q):
-            return [("blast_radius", {"service": svc}), ("similar_incidents", {"service": svc}),
-                    ("recall", {"entities": [f"svc:{svc}"]})]
-        if re.search(r"on[ -]?call|page|pager", q):
-            return [("why_not", {"kind": "on_call", "service": svc})]
-        if re.search(r"who knows|expert|knowledge|single point", q):
-            return [("who_knows", {"service": svc})]
-        if re.search(r"own|owner|team", q):
-            return [("owner_of", {"service": svc, "include_history": True})]
-        if re.search(r"similar|before|seen|prior|history", q):
-            return [("similar_incidents", {"service": svc})]
-        return [("owner_of", {"service": svc}), ("blast_radius", {"service": svc})]
+
+        # 5. one decision or incident: everything the graph states about it, with sources
+        if decisions and not svc:
+            return [("describe", {"entity": decisions[0]["id"]})]
+        if incident:
+            plan = [("describe", {"entity": incident})]
+            if re.search(r"similar|before|seen|prior|again|history", q):
+                plan.append(("similar_incidents", {"incident": incident}))
+            return plan
+
+        # 6. one service
+        if svc:
+            action = next((a for word, a in cls.ACTIONS if word in q), None)
+            if action or re.search(r"\b(change|modify|allowed|can we|safe to|decision|decisions|adr|govern|governs|policy)\b", q):
+                return [("decision_trail", {"service": svc, **({"action": action} if action else {})})]
+            if re.search(r"fail|down|outage|broken|error|slow|latency|affected|blast|break|impact|incident", q):
+                return [("blast_radius", {"service": svc}), ("similar_incidents", {"service": svc}),
+                        ("recall", {"entities": [f"svc:{svc}"]})]
+            if re.search(r"on[ -]?call|\bpage\b|pager", q):
+                return [("why_not", {"kind": "on_call", "service": svc})]
+            if re.search(r"who knows|expert|knowledge|ask about|who to ask|who should i ask", q):
+                return [("who_knows", {"service": svc})]
+            if re.search(r"\bown|owner|team|responsible", q):
+                return [("owner_of", {"service": svc, "include_history": True})]
+            if re.search(r"similar|before|seen|prior|history|last time|learn", q):
+                return [("similar_incidents", {"service": svc}), ("recall", {"entities": [f"svc:{svc}"]})]
+            return [("describe", {"entity": f"svc:{svc}"})]
+
+        # 7. one team or person: what they own, who is in it / what they work on, know and are on call for
+        if teams:
+            return [("describe", {"entity": teams[0]["id"]})]
+        if people:
+            return [("describe", {"entity": people[0]["id"]})]
+        return []
+
+    def _entities(self, question: str) -> list[dict] | None:
+        if not self.tenant:
+            return None
+        from backend.app.graph.resolve import spot  # lazy: providers stay importable without a database
+        from backend.app.graph.tenant import get_graph
+
+        return spot(get_graph(self.tenant), question)
 
     async def turn(self, system: str, messages: list, tools: list[dict]) -> Turn:
         if not self.planned:
             self.planned = True
             question = next(m["content"] for m in reversed(messages) if m["role"] == "user" and isinstance(m["content"], str))
-            plan = self.plan(question)
+            ents = self._entities(question)
+            plan = self.plan(question, ents)
             if plan:
                 calls = [Call(id=f"r{i}", name=n, args=a) for i, (n, a) in enumerate(plan)]
-                return Turn(text="Rules mode: tools chosen by keyword rules (no model available).", calls=calls,
+                named = ", ".join(f"{e['text']} -> {e['id']}" for e in ents or [])
+                return Turn(text="Rules mode: tools chosen by deterministic rules (no model available)"
+                                 + (f"; entities found in the graph: {named}." if named else "."), calls=calls,
                             assistant_message={"role": "assistant", "content": "", "rules_calls": plan}, model="rules")
-            return Turn(text="Rules mode (no model available): I could not find a service or entity id in the question. "
-                             "Try naming one, e.g. payments-api or per:priya-nair.", model="rules")
+            return Turn(text="Rules mode (no model available): the question names no service, person, team, incident or "
+                             "decision in this graph, so nothing was looked up. Try e.g. payments-api, Priya Nair, "
+                             "Team Ledger, inc:0042 or ADR-019.", model="rules")
         explanations = []
         for m in messages:
             if m.get("role") == "tool":

@@ -155,7 +155,7 @@ RETURN i.id, i.summary, i.ts_close, collect(DISTINCT p.id), collect(DISTINCT doc
 ```
 
 ### why_not: absence proof **[03] [01]**
-`backend/app/tools/why_not.py`. Returns the exact pattern checked, whether it matched, and the context: past edges and what ended them, the owning team, and who knows the service. Depth for `depends` is validated against {1,2,3,4} and interpolated.
+`backend/app/tools/why_not.py`. Returns the exact pattern checked, whether it matched, and the context: past edges and what ended them, the owning team, and who knows the service. Depth for `depends` is validated against {1,2,3,4} and interpolated. The `depends` check uses current edges only (`WHERE all(r IN relationships(p) WHERE r.valid_to IS NULL)`), so an ended dependency is not reported as one. A missing fact returns `outcome: "not_in_graph"`.
 ```cypher
 MATCH (p:Person)-[r:ON_CALL_FOR]->(s:Service {name: $service}) WHERE r.valid_to IS NULL RETURN p.id
 
@@ -190,13 +190,16 @@ RETURN s.id, t.id, t.name, p.id, p.name, o.source_doc, c.source_doc
 ```
 
 ### shortest_path **[01]**
-`backend/app/tools/shortest_path.py`. `dependency` mode uses FalkorDB `shortestPath()` with the endpoints resolved first. **FalkorDB does not support undirected `shortestPath()`** (error: "does not currently support undirected shortestPath traversals"), so `any` mode is a bounded variable-length match ordered by length. The ordering must sit in a `WITH`, because `ORDER BY length(p)` after `RETURN` fails once `p` is projected away.
+`backend/app/tools/shortest_path.py`. Both modes are bounded variable-length matches ordered by length, with the ordering in a `WITH` (`ORDER BY length(p)` after `RETURN` fails once `p` is projected away). FalkorDB's `shortestPath()` is not used: it rejects undirected patterns ("does not currently support undirected shortestPath traversals") and cannot filter on properties, so it could return a dependency chain through an edge that ended (`valid_to` set). `dependency` mode keeps current edges only (about 0.03 s on the demo graph). `any` mode prefers paths with no ended edges and returns one through history only when nothing current connects the two; those edges are flagged in `includes_ended_edges`.
 ```cypher
-MATCH (a:Service {id: $from}), (b:Service {id: $to}) WITH a, b, shortestPath((a)-[:DEPENDS_ON*1..8]->(b)) AS p WHERE p IS NOT NULL 
+MATCH p=(a:Service {id: $from})-[:DEPENDS_ON*1..8]->(b:Service {id: $to})
+WHERE all(r IN relationships(p) WHERE r.valid_to IS NULL)
+WITH p ORDER BY length(p) LIMIT 1
 RETURN [n IN nodes(p) | n.id], [r IN relationships(p) | type(r)], [r IN relationships(p) | startNode(r).id], [r IN relationships(p) | r.valid_to]
 
-MATCH p=(a {id: $from})-[:MEMBER_OF|OWNS|ON_CALL_FOR|DEPENDS_ON|AUTHORED|DEPLOYED_TO|AFFECTED|CAUSED_BY|RESOLVED|MADE|GOVERNS|SUPERSEDES*1..4]-(b {id: $to}) 
-WITH p ORDER BY length(p) LIMIT 1 
+MATCH p=(a {id: $from})-[:MEMBER_OF|OWNS|ON_CALL_FOR|DEPENDS_ON|AUTHORED|DEPLOYED_TO|AFFECTED|CAUSED_BY|RESOLVED|MADE|GOVERNS|SUPERSEDES*1..4]-(b {id: $to})
+WITH p, size([r IN relationships(p) WHERE r.valid_to IS NOT NULL]) AS ended
+ORDER BY ended, length(p) LIMIT 1
 RETURN [n IN nodes(p) | n.id], [r IN relationships(p) | type(r)], [r IN relationships(p) | startNode(r).id], [r IN relationships(p) | r.valid_to]
 ```
 
@@ -424,9 +427,18 @@ RETURN collect(DISTINCT s.id), collect(DISTINCT oc.id)
 ```
 
 ### Deterministic proof check of every agent answer **[01] [02] [03]**
-`backend/app/agents/verify.py`. Code, not a model, has the last word. Every id the answer cites must (1) exist in the tenant graph and (2) appear in a tool result from this run, or in the user's own question or history. Otherwise it is reported as `unknown` (an invented id) or `unbacked` (exists, but no tool showed it).
+`backend/app/agents/verify.py`. Code, not a model, has the last word. Every entity the answer refers to is found, either by id (`per:arjun-mehta`) or by plain name ("Arjun Mehta", "payments-api", "Team Ledger"), using the tenant's own services, people and teams as the dictionary. Each one must (1) exist in the tenant graph and (2) appear in a tool result from this run (as an id or by name), or in the user's question or history. If not, it is reported as `unknown` (invented) or `unbacked` (exists, but no tool showed it). Invented names are caught without a model too: a service-like slug with one of the tenant's own suffixes (`-api`, `-worker`, ...) that names no service, and a "First Last" pair built from real first and last names that is not a person.
+
+**Guard:** an answer with any `unknown` or `unbacked` reference is not shown. The loop replaces it with an answer composed only from the tool explanations, keeps the draft in `guard.draft`, and the UI says so ("Model draft rejected"). A wrong name is worse than a flatter answer.
 ```cypher
 MATCH (n) WHERE n.id IN $ids RETURN n.id
+MATCH (n) WHERE n:Service OR n:Person OR n:Team RETURN n.id, n.name, labels(n)[0]
+```
+
+### Entity resolution and explicit outcomes (every tool) **[01] [02] [03]**
+`backend/app/graph/resolve.py`, applied in `tools/base.run_tool` before any tool runs (over MCP, the API and the UI alike). An argument that names an entity (service, person, team, incident, decision, ...) is matched against the graph in order: exact id; exact name; normalized id or name ("Payments API", "Team Ledger", "ADR 19", "incident 42"); a first or last name only one person has ("Priya"). Near-misses ("paymnts-api") are never auto-corrected. The tool does not run and returns `outcome: "unknown_entity"` with suggestions (difflib over the same names). An ambiguous name ("Menon" matches five people) is refused with the candidates. When a name matches both an entity and its own source document (`adr:019` and `doc:adr-019`), the entity wins. Every result states its `outcome`: `answered`, `from_memory`, `not_in_graph` (the entity exists, the fact does not), `unknown_entity` or `recorded`, so an empty traversal is never mistaken for "nothing is affected". `resolved` records how each name was matched. `spot()` finds the same entities in free text for the rules planner.
+```cypher
+MATCH (n) WHERE labels(n)[0] IN $labels RETURN n.id, coalesce(n.name, n.title), labels(n)[0]
 ```
 
 ### Change impact on ingest **[03] -> [02] -> [01]**
@@ -441,6 +453,20 @@ MATCH (s:Service {id: $svc})
 OPTIONAL MATCH (t:Team)-[o:OWNS]->(s) WHERE o.valid_to IS NULL
 OPTIONAL MATCH (p:Person)-[c:ON_CALL_FOR]->(s) WHERE c.valid_to IS NULL
 RETURN t.id, t.name, p.id, p.name
+```
+
+### describe: one entity, current facts first, with sources **[03]**
+`backend/app/tools/describe.py`. Answers "what caused inc:0042?", "what does Priya Nair work on?", "why was ADR-019 made?" and "what does Team Ledger own?". Fact edges are grouped by how they read from the entity's side ("caused by", "resolved by", "governed by"). A state edge with `valid_to` set goes to `history`, never to current facts. A neighbouring decision with status `superseded` is labelled as such. For a person, the derived KNOWS weights are added and labelled as derived. MENTIONS and system edges are left out.
+```cypher
+MATCH (n {id: $id}) RETURN labels(n)[0], properties(n)
+
+MATCH (n {id: $id})-[r]-(m)
+WHERE r.derived IS NULL AND NOT type(r) IN ['MENTIONS', 'INVOLVED', 'TARGETS', 'ABOUT']
+RETURN type(r), startNode(r) = n, m.id, labels(m)[0], coalesce(m.name, m.title, m.version, m.id), m.ts,
+       r.valid_from, r.valid_to, r.source_doc, m.status
+ORDER BY type(r), m.id
+
+MATCH (p:Person {id: $id})-[k:KNOWS]->(s:Service) RETURN s.id, s.name, k.weight ORDER BY k.weight DESC, s.id LIMIT 5
 ```
 
 ## UI support (read-only)

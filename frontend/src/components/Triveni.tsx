@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutGrid, MessagesSquare, Plus, Repeat, Send, ShieldCheck, Wrench, X } from "lucide-react";
 import {
   api, parseEdge, toolAsStep, type AgentResult, type ConversationInfo, type GraphEdge, type GraphNode, type Health,
-  type Step, type ToolInfo,
+  type Guard, type Step, type ToolInfo,
 } from "@/lib/api";
 import { SCENARIOS, TRACK_COLUMNS, type Scenario } from "@/lib/scenarios";
 import EntryCard, { type Entry } from "./EntryCard";
@@ -13,6 +13,9 @@ import GraphTable from "./GraphTable";
 import RightPanel, { type PanelState, type PanelTab } from "./RightPanel";
 import ToolRunner from "./ToolRunner";
 import { Chip } from "./ui";
+
+/** The rejected-draft record, if the proof check replaced the model's answer (empty object otherwise). */
+const guardOf = (r: AgentResult) => (r.guard && "reason" in r.guard ? (r.guard as Guard) : undefined);
 
 let counter = 0;
 const newId = () => `e${++counter}`;
@@ -193,7 +196,8 @@ export default function Triveni() {
       refreshConversations();
       setCoordKey((k) => k + 1);
       await finish(entry, { answer: r.answer, steps: r.steps, ms, model: r.model, fallbacks: r.fallbacks,
-                            conversationId: r.conversation_id, episode: r.episode || undefined, verification: r.verification }, t);
+                            conversationId: r.conversation_id, episode: r.episode || undefined, verification: r.verification,
+                            guard: guardOf(r) }, t);
     } catch (e) {
       update(entry.id, { pending: false, error: ctrl.signal.aborted ? "Cancelled" : (e as Error).message });
     } finally {
@@ -225,7 +229,7 @@ export default function Triveni() {
   const addAgentResult = (label: string, r: AgentResult) => {
     const entry: Entry = { id: newId(), question: label, mode: "agent", pending: false, steps: r.steps, answer: r.answer,
                            model: r.model, fallbacks: r.fallbacks, conversationId: r.conversation_id,
-                           episode: r.episode || undefined, verification: r.verification };
+                           episode: r.episode || undefined, verification: r.verification, guard: guardOf(r) };
     add(entry);
     setActiveId(entry.id);
     showResult(entry, tenant);

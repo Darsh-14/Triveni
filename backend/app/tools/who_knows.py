@@ -43,6 +43,7 @@ SECOND_HOP = {"RESOLVED": "AFFECTED", "AUTHORED": "DEPLOYED_TO", "MADE": "GOVERN
         "additionalProperties": False,
     },
     tracks=("03",),
+    entities={"service": (("Service",), "name")},
 )
 def who_knows(graph, service: str, limit: int = 5) -> ToolResult:
     service = service.removeprefix("svc:")

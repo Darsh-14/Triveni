@@ -1,19 +1,24 @@
 """shortest_path (Track 01): how two things are connected: a service dependency chain, or any fact path
-(person -> incident -> service ...). Uses FalkorDB's shortestPath()."""
+(person -> incident -> service ...). Bounded variable-length matches ordered by length: FalkorDB's shortestPath()
+cannot filter on properties, and a dependency that ended (valid_to set) must not count as a current chain."""
+from backend.app.graph.resolve import FACT_LABELS
 from backend.app.tools.base import ToolResult, edge_ref, ro, tool
 
 # Fact edges only (no MENTIONS: registry documents mention everything and would make every path trivial).
 FACT_TYPES = "MEMBER_OF|OWNS|ON_CALL_FOR|DEPENDS_ON|AUTHORED|DEPLOYED_TO|AFFECTED|CAUSED_BY|RESOLVED|MADE|GOVERNS|SUPERSEDES"
 MODES = {
-    # directed: follows what `from` needs (FalkorDB shortestPath(), endpoints resolved first)
-    "dependency": "MATCH (a:Service {id: $from}), (b:Service {id: $to}) "
-                  "WITH a, b, shortestPath((a)-[:DEPENDS_ON*1..8]->(b)) AS p WHERE p IS NOT NULL "
+    # directed: follows what `from` needs, current DEPENDS_ON edges only (~0.03 s on the demo graph)
+    "dependency": "MATCH p=(a:Service {id: $from})-[:DEPENDS_ON*1..8]->(b:Service {id: $to}) "
+                  "WHERE all(r IN relationships(p) WHERE r.valid_to IS NULL) "
+                  "WITH p ORDER BY length(p) LIMIT 1 "
                   "RETURN [n IN nodes(p) | n.id], [r IN relationships(p) | type(r)], "
                   "[r IN relationships(p) | startNode(r).id], [r IN relationships(p) | r.valid_to]",
     # undirected: FalkorDB's shortestPath() does not support undirected patterns, so this is a bounded
     # variable-length match ordered by length (fine at this graph size; the hop cap keeps it cheap).
+    # Paths over current facts win; a path through ended edges is returned only when nothing current connects them.
     "any": f"MATCH p=(a {{id: $from}})-[:{FACT_TYPES}*1..4]-(b {{id: $to}}) "
-           "WITH p ORDER BY length(p) LIMIT 1 "
+           "WITH p, size([r IN relationships(p) WHERE r.valid_to IS NOT NULL]) AS ended "
+           "ORDER BY ended, length(p) LIMIT 1 "
            "RETURN [n IN nodes(p) | n.id], [r IN relationships(p) | type(r)], "
            "[r IN relationships(p) | startNode(r).id], [r IN relationships(p) | r.valid_to]",
 }
@@ -39,6 +44,8 @@ def _node_id(x: str) -> str:
         "additionalProperties": False,
     },
     tracks=("01",),
+    entities={"from": (lambda a: ("Service",) if a.get("mode", "dependency") == "dependency" else FACT_LABELS, "id"),
+              "to": (lambda a: ("Service",) if a.get("mode", "dependency") == "dependency" else FACT_LABELS, "id")},
 )
 def shortest_path(graph, mode: str = "dependency", **ends) -> ToolResult:
     if mode not in MODES:

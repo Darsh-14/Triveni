@@ -18,6 +18,27 @@ export interface ToolResult {
   explanation: string;
   tracks: Track[];
   sources: string[];
+  outcome?: Outcome;
+  resolved?: Resolution[];
+}
+
+/** Every tool result states what happened, so an empty traversal is never read as "nothing is affected". */
+export type Outcome = "answered" | "from_memory" | "not_in_graph" | "unknown_entity" | "recorded" | "error" | "";
+
+/** How a typed name was matched to a graph node before the tool ran ("Priya" -> per:priya-nair, partial_name). */
+export interface Resolution {
+  argument: string;
+  query: string;
+  id: string;
+  name: string;
+  label: string;
+  how: "id" | "name" | "normalized" | "partial_name";
+}
+
+/** Set when the model's draft named something no tool returned: the draft is replaced by the tool results. */
+export interface Guard {
+  reason: string;
+  draft: string;
 }
 
 export interface Step {
@@ -34,6 +55,8 @@ export interface Step {
   ms: number;
   via: string;
   data?: Record<string, unknown>; // the tool's result data (agent steps and direct runs)
+  outcome?: Outcome;
+  resolved?: Resolution[];
 }
 
 export interface Verification {
@@ -74,6 +97,7 @@ export interface AgentResult {
   conversation_id: string;
   episode: string;
   verification: Verification;
+  guard?: Guard | Record<string, never>;
   tracks: Track[];
   sources: string[];
 }
@@ -222,5 +246,6 @@ export function parseEdge(ref: string): GraphEdge {
 /** Wrap a direct tool run as a one-step result so the UI renders tools and agent answers the same way. */
 export function toolAsStep(name: string, input: Record<string, unknown>, r: ToolResult, ms: number): Step {
   return { tool: name, input, why: "", ok: true, explanation: r.explanation, tracks: r.tracks,
-           sources: r.sources, cypher: r.cypher, params: r.params, paths: r.paths, ms, via: "http", data: r.data };
+           sources: r.sources, cypher: r.cypher, params: r.params, paths: r.paths, ms, via: "http", data: r.data,
+           outcome: r.outcome, resolved: r.resolved };
 }

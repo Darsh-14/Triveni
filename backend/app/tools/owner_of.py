@@ -30,6 +30,7 @@ ORDER BY r.valid_from
         "additionalProperties": False,
     },
     tracks=("03",),
+    entities={"service": (("Service",), "name")},
 )
 def owner_of(graph, service: str, include_history: bool = False) -> ToolResult:
     service = service.removeprefix("svc:")

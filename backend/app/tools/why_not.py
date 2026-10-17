@@ -6,7 +6,8 @@ CHECKS = {
     "on_call": "MATCH (p:Person)-[r:ON_CALL_FOR]->(s:Service {name: $service}) WHERE r.valid_to IS NULL RETURN p.id",
     "owner": "MATCH (t:Team)-[r:OWNS]->(s:Service {name: $service}) WHERE r.valid_to IS NULL RETURN t.id",
 }
-DEPENDS = "MATCH p=(a:Service {name: $from})-[:DEPENDS_ON*1..%d]->(b:Service {name: $to}) RETURN [n IN nodes(p) | n.id] LIMIT 1"
+DEPENDS = ("MATCH p=(a:Service {name: $from})-[:DEPENDS_ON*1..%d]->(b:Service {name: $to}) "
+           "WHERE all(r IN relationships(p) WHERE r.valid_to IS NULL) RETURN [n IN nodes(p) | n.id] LIMIT 1")
 
 EXISTS = "MATCH (s:Service {name: $service}) RETURN s.id"
 HISTORY = """
@@ -40,13 +41,15 @@ ALLOWED_DEPTHS = {1, 2, 3, 4}
         "additionalProperties": False,
     },
     tracks=("03", "01"),
+    entities={"service": (("Service",), "name"), "other": (("Service",), "name")},
 )
 def why_not(graph, kind: str, service: str, other: str | None = None, depth: int = 4) -> ToolResult:
     service = service.removeprefix("svc:")
     params = {"service": service}
     if not ro(graph, EXISTS, params):
         return ToolResult(data={"kind": kind, "service": service, "service_exists": False}, cypher=EXISTS, params=params,
-                          explanation=f"There is no service named {service}, so nothing else was checked.")
+                          explanation=f"There is no service named {service}, so nothing else was checked.",
+                          outcome="unknown_entity")
 
     if kind == "depends":
         if not other or depth not in ALLOWED_DEPTHS:
@@ -63,7 +66,8 @@ def why_not(graph, kind: str, service: str, other: str | None = None, depth: int
         explanation = (f"{service} depends on {params['other']} via {' -> '.join(path)}." if found else
                        f"No DEPENDS_ON path of length 1..{depth} from {service} to {params['other']}"
                        + (f"; the reverse exists ({' -> '.join(data['reverse_path'])})." if reverse else "."))
-        return ToolResult(data=data, cypher=check, params=params, paths=paths, explanation=explanation)
+        return ToolResult(data=data, cypher=check, params=params, paths=paths, explanation=explanation,
+                          outcome="answered" if found else "not_in_graph")
 
     check = CHECKS[kind]
     found = [r[0] for r in ro(graph, check, params)]
@@ -92,4 +96,5 @@ def why_not(graph, kind: str, service: str, other: str | None = None, depth: int
                    + (f" ({len(history)} past edge(s) ended)" if history else " and none ever existed")
                    + (f". Owner {owner}; best contacts {', '.join(c['name'] for c in contacts)}." if owner and contacts else "."))
     return ToolResult(data=data, cypher="\n\n".join([check, history_q.strip(), OWNER_TEAM.strip(), KNOWERS]),
-                      params=params, paths=paths, sources=sources, explanation=explanation)
+                      params=params, paths=paths, sources=sources, explanation=explanation,
+                      outcome="answered" if found else "not_in_graph")

@@ -27,7 +27,12 @@ def current_decisions(graph, service: str) -> list[dict]:
     ]
 
 
+def is_current(d: dict) -> bool:
+    """In force: nothing supersedes it and its own status does not say otherwise (both are checked, not either)."""
+    return not d["superseded_by"] and d.get("status") not in ("superseded", "rejected", "deprecated")
+
+
 def action_gate(decisions: list[dict], action: str) -> dict:
     """An action is blocked when a *current* decision governing the target forbids it."""
-    blockers = [d["id"] for d in decisions if not d["superseded_by"] and action in d["forbids"]]
+    blockers = [d["id"] for d in decisions if is_current(d) and action in d["forbids"]]
     return {"action": action, "allowed": not blockers, "blocked_by": blockers}
