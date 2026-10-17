@@ -1,10 +1,11 @@
 "use client";
 
 import { Fragment, useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleX, LoaderCircle, Code } from "lucide-react";
+import { ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleX, LoaderCircle } from "lucide-react";
 import { api, type Doc, type ProgressEvent, type Step, type Track, type Verification } from "@/lib/api";
 import { docKindOfId, ID_PATTERN } from "@/lib/entities";
 import Callouts from "./Callouts";
+import StepTimeline from "./StepTimeline";
 import { Chip, DocIcon, EntityChip, TrackTags, type Tone } from "./ui";
 
 export interface Entry {
@@ -187,7 +188,8 @@ function AnswerText({ text, h }: { text: string; h: Handlers }) {
 export default function EntryCard({ entry, tenant, active, focusStep, onSelect, ...h }: {
   entry: Entry; tenant: string; active: boolean; focusStep: number | null; onSelect: () => void;
 } & Handlers) {
-  const [showSteps, setShowSteps] = useState(false);
+  const [stepsOpen, setStepsOpen] = useState<boolean | null>(null); // null: open by default for short traces
+  const showSteps = stepsOpen ?? entry.steps.length <= 6;
   const [showDetails, setShowDetails] = useState(false);
   const sources = entrySources(entry);
   const tracks = entryTracks(entry);
@@ -205,7 +207,7 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {entry.verification && <VerdictChip v={entry.verification} />}
           {entry.steps.length > 0 && (
-            <button onClick={() => setShowSteps((v) => !v)} aria-expanded={showSteps}
+            <button onClick={() => setStepsOpen(!showSteps)} aria-expanded={showSteps}
                     className="inline-flex items-center gap-0.5 rounded border border-line bg-panel px-1.5 py-0.5 text-xs font-medium text-ink-2 hover:bg-raised">
               {showSteps ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               {entry.steps.length} tool{entry.steps.length > 1 ? "s" : ""}
@@ -226,22 +228,8 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
       )}
 
       {showSteps && (
-        <ol className="mt-2 divide-y divide-line rounded-md border border-line">
-          {entry.steps.map((s, i) => (
-            <li key={i} className={`flex items-center gap-2 px-2 py-1.5 text-xs ${focusStep === i ? "bg-accent-soft" : ""}`}>
-              <button onClick={() => h.onStep(focusStep === i ? null : i)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                <span className="w-4 tabular-nums text-ink-3">{i + 1}</span>
-                <span title={s.explanation} className={`font-mono font-medium ${s.ok ? "text-ink" : "text-bad"}`}>{s.tool}</span>
-                <span className="truncate font-mono text-ink-3">{JSON.stringify(s.input)}</span>
-              </button>
-              <span className="tabular-nums text-ink-3">{s.ms} ms</span>
-              {s.cypher && (
-                <button onClick={() => h.onCypher(s)} title="Cypher" aria-label={`Cypher for ${s.tool}`}
-                        className="rounded p-0.5 text-ink-3 hover:bg-raised hover:text-ink"><Code size={14} /></button>
-              )}
-            </li>
-          ))}
-        </ol>
+        <StepTimeline steps={entry.steps} events={entry.progress ?? []} totalMs={entry.ms} focusStep={focusStep}
+                      onStep={h.onStep} onCypher={h.onCypher} />
       )}
 
       {sources.length > 0 && <div className="mt-3"><SourcesRow tenant={tenant} ids={sources} onOpen={h.onOpen} /></div>}
