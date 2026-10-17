@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Core, ElementDefinition, LayoutOptions, NodeSingular } from "cytoscape";
-import { Eye, EyeOff, Maximize, Search, SunDim, ZoomIn, ZoomOut } from "lucide-react";
+import { Eye, EyeOff, Maximize, Network, Orbit, Search, Share2, SunDim, ZoomIn, ZoomOut } from "lucide-react";
 import type { GraphEdge, GraphNode } from "@/lib/api";
 import { styleOf } from "@/lib/entities";
 import { IconButton, ShapeSwatch } from "./ui";
@@ -86,7 +86,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
       const fcose = (await import("cytoscape-fcose")).default;
       if (disposed || !container.current) return;
       try { cytoscape.use(fcose); } catch { /* already registered (fast refresh) */ }
-      cy.current = cytoscape({ container: container.current, style: STYLE as never, minZoom: 0.15, maxZoom: 2.5, wheelSensitivity: 0.3 });
+      cy.current = cytoscape({ container: container.current, style: STYLE as never, minZoom: 0.15, maxZoom: 2.5 });
       cy.current.on("tap", "node", (e) => handlers.current.onSelect(e.target.id()));
       cy.current.on("tap", (e) => { if (e.target === cy.current) handlers.current.onSelect(null); });
       cy.current.on("mouseover", "node", (e) => {
@@ -199,12 +199,14 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
   };
 
   return (
-    <div className="relative h-full w-full">
-      <div ref={container} className="h-full w-full" data-testid="graph-canvas" />
+    <div className="relative isolate h-full w-full overflow-hidden">
+      {/* Cytoscape forces position:relative on its container and stacks its canvases inside it:
+          keep that in layer 0, overlays in 10, tooltip in 20 */}
+      <div ref={container} className="relative z-0 h-full w-full" data-testid="graph-canvas" />
 
       {/* search (top-left) */}
       <form onSubmit={(e) => { e.preventDefault(); find(); }}
-            className="absolute left-3 top-3 flex items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1 shadow-sm">
+            className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1 shadow-sm">
         <Search size={14} className="text-ink-3" aria-hidden />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find node" aria-label="Find node"
                className="w-36 bg-transparent text-xs text-ink outline-none placeholder:text-ink-3" />
@@ -212,7 +214,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
 
       {/* labels and relationships (bottom-left) */}
       {(labelCounts.length > 0) && (
-        <div className="absolute bottom-3 left-3 max-h-[45%] w-48 overflow-auto rounded-md border border-line bg-panel/95 p-2 text-xs shadow-sm">
+        <div className="absolute bottom-3 left-3 z-10 max-h-[calc(100%-5rem)] w-48 overflow-auto rounded-md border border-line bg-panel p-2 text-xs shadow-sm">
           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-3">Labels</p>
           {labelCounts.map(([label, n]) => (
             <button key={label} onClick={() => toggle(hiddenLabels, label, setHiddenLabels)} aria-pressed={!hiddenLabels.has(label)}
@@ -235,26 +237,26 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
         </div>
       )}
 
-      {/* controls (bottom-right) */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md border border-line bg-panel p-1 shadow-sm">
+      {/* controls (vertical, bottom-right): narrow enough to sit beside the legend on any canvas width */}
+      <div className="absolute bottom-3 right-3 z-10 flex flex-col items-center gap-0.5 rounded-md border border-line bg-panel p-1 shadow-sm">
         <IconButton label="Zoom in" onClick={() => zoomBy(1.25)}><ZoomIn size={16} /></IconButton>
         <IconButton label="Zoom out" onClick={() => zoomBy(0.8)}><ZoomOut size={16} /></IconButton>
         <IconButton label="Fit (f)" onClick={() => fitCapped(cy.current)}><Maximize size={16} /></IconButton>
-        <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
-        <div role="radiogroup" aria-label="Layout" className="flex rounded border border-line text-xs">
-          {(["force", "tree", "radial"] as const).map((l) => (
-            <button key={l} role="radio" aria-checked={layout === l} onClick={() => onLayout(l)}
-                    className={`px-2 py-1 capitalize ${layout === l ? "bg-accent-soft font-medium text-accent" : "text-ink-2 hover:bg-raised"}`}>
-              {l}
+        <span className="my-0.5 h-px w-5 bg-line" aria-hidden />
+        <div role="radiogroup" aria-label="Layout" className="flex flex-col gap-0.5">
+          {([["force", "Force layout", Share2], ["tree", "Tree layout", Network], ["radial", "Radial layout", Orbit]] as const).map(([l, label, Icon]) => (
+            <button key={l} role="radio" aria-checked={layout === l} title={label} aria-label={label} onClick={() => onLayout(l)}
+                    className={`grid h-8 w-8 place-items-center rounded-md ${layout === l ? "bg-accent-soft text-accent" : "text-ink-2 hover:bg-raised"}`}>
+              <Icon size={16} />
             </button>
           ))}
         </div>
-        <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
+        <span className="my-0.5 h-px w-5 bg-line" aria-hidden />
         <IconButton label="Dim (d)" active={dim} onClick={() => setDim((v) => !v)}><SunDim size={16} /></IconButton>
       </div>
 
       {tip && (
-        <div className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-md border border-line bg-panel px-2 py-1 text-xs shadow-md"
+        <div className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full rounded-md border border-line bg-panel px-2 py-1 text-xs shadow-md"
              style={{ left: tip.x, top: tip.y - 16 }}>
           <p className="font-medium text-ink">{tip.name}</p>
           <p className="font-mono text-[11px] text-ink-3">{tip.label} · {tip.id}</p>

@@ -320,11 +320,6 @@ export default function Triveni() {
         </label>
         <div className="ml-auto flex items-center gap-2 text-xs">
           {health?.demo_replay && <Chip tone="warn"><Repeat size={12} aria-hidden />Replay</Chip>}
-          <button onClick={openApprovals}
-                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium ${pendingApprovals ? "border-warn/40 bg-warn-soft text-warn" : "border-line text-ink-2 hover:bg-raised"}`}>
-            <ShieldCheck size={14} aria-hidden />Approvals
-            {pendingApprovals > 0 && <span className="rounded-full bg-warn px-1.5 text-[11px] text-white tabular-nums">{pendingApprovals}</span>}
-          </button>
         </div>
       </header>
 
@@ -357,8 +352,9 @@ export default function Triveni() {
 
         {/* thread */}
         <section className="relative flex w-[480px] min-w-[420px] shrink-0 flex-col border-r border-line bg-bg">
+          {flyout && <div className="absolute inset-0 z-20 bg-ink/20" onClick={() => setFlyout(null)} aria-hidden />}
           {flyout && (
-            <div className="absolute inset-x-0 top-0 z-20 max-h-[75%] overflow-auto border-b border-line bg-panel p-3 shadow-lg">
+            <div className="absolute inset-x-0 top-0 z-30 max-h-[75%] overflow-auto border-b border-line bg-panel p-3 shadow-lg">
               <div className="mb-2 flex items-center">
                 <h2 className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">{flyout}</h2>
                 <button onClick={() => setFlyout(null)} aria-label="Close" className="ml-auto rounded p-1 text-ink-3 hover:bg-raised"><X size={14} /></button>
@@ -386,7 +382,7 @@ export default function Triveni() {
             </div>
           )}
 
-          <div className="flex-1 space-y-3 overflow-auto p-4">
+          <div className="relative z-0 flex-1 space-y-3 overflow-auto p-4">
             {entries.length === 0 ? scenarioGrid(false) : entries.map((e) => (
               <EntryCard key={e.id} entry={e} tenant={tenant} active={e.id === activeId}
                          focusStep={graph.entryId === e.id ? focusStep : null}
@@ -429,7 +425,7 @@ export default function Triveni() {
               <button onClick={() => showOverview(tenant)} className="rounded-md border border-line px-2 py-1 font-medium text-ink-2 hover:bg-raised">Overview</button>
             )}
           </div>
-          <div className="relative min-h-0 flex-1">
+          <div className="relative isolate min-h-0 flex-1">
             <div className={view === "graph" ? "h-full" : "hidden"}>
               <GraphCanvas nodes={graph.nodes} edges={graph.edges} roots={graph.roots} focus={focus} hover={hover}
                            layout={layout} onLayout={setLayout} selected={selected} onSelect={selectNode} />

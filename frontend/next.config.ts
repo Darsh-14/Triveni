@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // the dev badge sat on top of the composer (bottom-left); errors still surface without it
+  devIndicators: false,
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
