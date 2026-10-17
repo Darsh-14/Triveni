@@ -1,39 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, parseEdge, toolAsStep, type ConversationInfo, type GraphEdge, type GraphNode, type Health, type Step, type ToolInfo } from "@/lib/api";
-import Drawer, { type DrawerContent } from "./Drawer";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LayoutGrid, MessagesSquare, Plus, Repeat, Send, ShieldCheck, Wrench, X } from "lucide-react";
+import {
+  api, parseEdge, toolAsStep, type AgentResult, type ConversationInfo, type GraphEdge, type GraphNode, type Health,
+  type Step, type ToolInfo,
+} from "@/lib/api";
+import { SCENARIOS, TRACK_COLUMNS, type Scenario } from "@/lib/scenarios";
 import EntryCard, { type Entry } from "./EntryCard";
-import GraphCanvas, { edgeKey, LABEL_COLOURS } from "./GraphCanvas";
-import Coordination from "./Coordination";
+import GraphCanvas, { edgeKey, type LayoutName } from "./GraphCanvas";
+import GraphTable from "./GraphTable";
+import RightPanel, { type PanelState, type PanelTab } from "./RightPanel";
 import ToolRunner from "./ToolRunner";
-
-// Demo scenarios (MVP.md Section 5). With the agent online the question goes to Claude over MCP;
-// otherwise the scenario's main tool runs directly, so the demo still works without a model.
-const SCENARIOS: { n: number; label: string; question: string; tool?: [string, Record<string, unknown>]; ingest?: string }[] = [
-  { n: 1, label: "payments-api is failing", question: "payments-api is failing, what's affected and who do I page?",
-    tool: ["blast_radius", { service: "payments-api" }] },
-  { n: 2, label: "Change retry policy on orders-api?", question: "Can we change the retry policy on orders-api?",
-    tool: ["decision_trail", { service: "orders-api", action: "change_retry_policy" }] },
-  { n: 3, label: "Who is on call for billing-batch?", question: "Who is on call for billing-batch?",
-    tool: ["why_not", { kind: "on_call", service: "billing-batch" }] },
-  { n: 4, label: "Single points of knowledge?", question: "Which engineers are single points of knowledge?",
-    tool: ["key_people", {}] },
-  { n: 6, label: "Hand off inc:0057 to remediation", question: "inc:0057: orders-api p99 latency is above 4s and workers are saturated. Investigate briefly, then hand it off to remediation for a fix.",
-    tool: ["similar_incidents", { incident: "inc:0057" }] },
-  { n: 9, label: "What if Priya Nair leaves?", question: "What happens to our knowledge coverage if Priya Nair leaves?",
-    tool: ["what_if", { scenario: "person_leaves", entity: "per:priya-nair" }] },
-  { n: 7, label: "Ingest: billing-batch moves to Atlas", question: "Ingest #eng-announcements: billing-batch moves to Team Atlas",
-    ingest: "data/raw/live/chat-billing-move.md" },
-];
+import { Chip } from "./ui";
 
 let counter = 0;
 const newId = () => `e${++counter}`;
-
-/** A pending entry stamped with its start time (module-level, so the clock is read outside rendering). */
-const pendingEntry = (question: string, mode: Entry["mode"]): Entry =>
-  ({ id: newId(), question, mode, pending: true, steps: [], startedAt: Date.now() });
-const newRunId = () => `run:${crypto.randomUUID().slice(0, 13)}`;
+const TREE_TOOLS = new Set(["blast_radius", "decision_trail", "shortest_path"]);
 
 /** Run an async call and measure it (module-level, so it is clearly not part of rendering). */
 async function timed<T>(fn: () => Promise<T>): Promise<[T, number]> {
@@ -42,6 +25,38 @@ async function timed<T>(fn: () => Promise<T>): Promise<[T, number]> {
   return [value, Math.round(performance.now() - t0)];
 }
 
+/** The node a step was asked about: the centre of tree and radial layouts. */
+function rootsOf(steps: Step[]): string[] {
+  const roots = new Set<string>();
+  for (const s of steps.slice(0, 1)) {
+    const i = s.input as Record<string, unknown>;
+    if (typeof i.service === "string") roots.add(i.service.includes(":") ? i.service : `svc:${i.service}`);
+    for (const k of ["incident", "entity", "person", "source"]) if (typeof i[k] === "string" && String(i[k]).includes(":")) roots.add(String(i[k]));
+    if (Array.isArray(i.entities)) i.entities.filter((e) => typeof e === "string" && e.includes(":")).slice(0, 1).forEach((e) => roots.add(e));
+  }
+  return [...roots];
+}
+
+/** Node ids and edge keys of some steps' paths. */
+function evidenceOf(steps: Step[]) {
+  const edges = new Map<string, GraphEdge>();
+  const ids = new Set<string>();
+  for (const s of steps) {
+    for (const p of s.paths) {
+      p.nodes.forEach((n) => ids.add(n));
+      for (const ref of p.edges) {
+        const e = { ...parseEdge(ref), superseded: p.superseded, stale: p.stale };
+        ids.add(e.source); ids.add(e.target);
+        edges.set(edgeKey(e), e);
+      }
+    }
+  }
+  return { ids, edges };
+}
+
+type Flyout = "scenarios" | "conversations" | "tools" | null;
+interface GraphState { nodes: GraphNode[]; edges: GraphEdge[]; roots: string[]; title: string; entryId: string | null }
+
 export default function Triveni() {
   const [tenants, setTenants] = useState<string[]>([]);
   const [tenant, setTenant] = useState("acme");
@@ -49,30 +64,39 @@ export default function Triveni() {
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [focusStep, setFocusStep] = useState<number | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
-  const [panel, setPanel] = useState<"ask" | "tool" | "coord">("ask");
+  const [flyout, setFlyout] = useState<Flyout>(null);
+  const [panel, setPanel] = useState<PanelState | null>(null);
   const [coordKey, setCoordKey] = useState(0);
-  const [drawer, setDrawer] = useState<DrawerContent | null>(null);
-  const [graph, setGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[]; highlight: Set<string>; title: string }>(
-    { nodes: [], edges: [], highlight: new Set(), title: "" });
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+  const [graph, setGraph] = useState<GraphState>({ nodes: [], edges: [], roots: [], title: "", entryId: null });
+  const [layout, setLayout] = useState<LayoutName>("force");
+  const [view, setView] = useState<"graph" | "table">("graph");
+  const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationInfo[]>([]);
+  const composer = useRef<HTMLInputElement>(null);
+  const threadEnd = useRef<HTMLDivElement>(null);
+  const aborts = useRef(new Map<string, AbortController>());
 
   const busy = entries.some((e) => e.pending);
   const agentOnline = Boolean(health?.agent);
 
-  // ---------------------------------------------------------------- start-up and tenant switch
+  // ---------------------------------------------------------------- start-up, tenant data
   useEffect(() => {
     Promise.all([api.health(), api.tenants(), api.tools()])
       .then(([h, t, tl]) => { setHealth(h); setTenants(t); setTools(tl); })
-      .catch((e) => setError(`Backend not reachable: ${e.message}. Start it with: uvicorn backend.app.main:app --reload`));
+      .catch((e) => setError(`Backend not reachable: ${e.message} · uvicorn backend.app.main:app --reload`));
   }, []);
 
   const showOverview = useCallback(async (t: string) => {
     try {
       const o = await api.overview(t);
-      setGraph({ nodes: o.nodes, edges: o.edges, highlight: new Set(), title: `${t}: services and owning teams` });
+      setGraph({ nodes: o.nodes, edges: o.edges, roots: [], title: "Overview", entryId: null });
+      setLayout("force"); setFocusStep(null); setSelected(null);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -82,18 +106,10 @@ export default function Triveni() {
     if (error) return;
     let live = true; // ignore a late response after the tenant changed
     api.overview(tenant)
-      .then((o) => live && setGraph({ nodes: o.nodes, edges: o.edges, highlight: new Set(), title: `${tenant}: services and owning teams` }))
+      .then((o) => live && setGraph({ nodes: o.nodes, edges: o.edges, roots: [], title: "Overview", entryId: null }))
       .catch((e) => live && setError(e.message));
     return () => { live = false; };
   }, [tenant, error]);
-
-  const switchTenant = (t: string) => {
-    setTenant(t);
-    setEntries([]);
-    setActiveId(null);
-    setDrawer(null);
-    setConversationId(null);
-  };
 
   const refreshConversations = useCallback(() => {
     api.conversations(tenant).then(setConversations).catch(() => setConversations([]));
@@ -105,16 +121,127 @@ export default function Triveni() {
     return () => { live = false; };
   }, [tenant]);
 
+  useEffect(() => {
+    let live = true;
+    api.actions(tenant).then((a) => live && setPendingApprovals(a.filter((x) => x.status === "proposed").length)).catch(() => {});
+    return () => { live = false; };
+  }, [tenant, coordKey]);
+
+  useEffect(() => { threadEnd.current?.scrollIntoView({ block: "end" }); }, [entries.length]);
+
+  const switchTenant = (t: string) => {
+    setTenant(t);
+    setEntries([]); setActiveId(null); setPanel(null); setConversationId(null); setSelected(null); setFocusStep(null);
+  };
+
+  // ---------------------------------------------------------------- canvas for a result
+  const showResult = useCallback(async (entry: Entry, t: string) => {
+    const { ids, edges } = evidenceOf(entry.steps);
+    if (!ids.size) return;
+    const nodes = await api.nodes(t, [...ids]);
+    const first = entry.steps.find((s) => s.paths.length)?.tool ?? "";
+    setGraph({ nodes, edges: [...edges.values()], roots: rootsOf(entry.steps), title: entry.question, entryId: entry.id });
+    setLayout(TREE_TOOLS.has(first) ? "tree" : "force");
+    setFocusStep(null); setSelected(null);
+  }, []);
+
+  const focus = useMemo(() => {
+    if (focusStep === null) return null;
+    const entry = entries.find((e) => e.id === graph.entryId);
+    const step = entry?.steps[focusStep];
+    if (!step) return null;
+    const { ids, edges } = evidenceOf([step]);
+    return new Set<string>([...ids, ...edges.keys()]);
+  }, [focusStep, entries, graph.entryId]);
+
+  const update = (id: string, patch: Partial<Entry>) =>
+    setEntries((es) => es.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+
+  const add = (entry: Entry) => setEntries((es) => [...es, entry]);
+
+  const finish = async (base: Entry, patch: Partial<Entry>, t: string) => {
+    const done = { ...base, ...patch, pending: false };
+    update(base.id, { ...patch, pending: false });
+    setActiveId(base.id);
+    await showResult(done, t);
+  };
+
+  // ---------------------------------------------------------------- actions
+  const runTool = async (name: string, args: Record<string, unknown>, label: string | undefined, t: string) => {
+    const entry: Entry = { id: newId(), question: label ?? name, mode: "tool", pending: true, steps: [], startedAt: Date.now() };
+    add(entry);
+    try {
+      const [r, ms] = await timed(() => api.runTool(t, name, args));
+      await finish(entry, { steps: [toolAsStep(name, args, r, ms)], ms, model: "direct" }, t);
+    } catch (e) {
+      update(entry.id, { pending: false, error: (e as Error).message });
+    }
+  };
+
+  const ask = async (q: string, t: string) => {
+    const entry: Entry = { id: newId(), question: q, mode: "agent", pending: true, steps: [], startedAt: Date.now() };
+    add(entry);
+    const runId = `run:${crypto.randomUUID().slice(0, 13)}`;
+    const ctrl = new AbortController();
+    aborts.current.set(entry.id, ctrl);
+    const poll = setInterval(() => {
+      api.askProgress(runId).then((p) => update(entry.id, { progress: p.events })).catch(() => {});
+    }, 700);
+    try {
+      const [r, ms] = await timed(() => api.ask(t, q, conversationId, runId, ctrl.signal).finally(() => clearInterval(poll)));
+      setConversationId(r.conversation_id);
+      refreshConversations();
+      setCoordKey((k) => k + 1);
+      await finish(entry, { answer: r.answer, steps: r.steps, ms, model: r.model, fallbacks: r.fallbacks,
+                            conversationId: r.conversation_id, episode: r.episode || undefined, verification: r.verification }, t);
+    } catch (e) {
+      update(entry.id, { pending: false, error: ctrl.signal.aborted ? "Cancelled" : (e as Error).message });
+    } finally {
+      aborts.current.delete(entry.id);
+    }
+  };
+
+  const ingest = async (path: string, label: string, t: string) => {
+    const entry: Entry = { id: newId(), question: label, mode: "ingest", pending: true, steps: [], startedAt: Date.now() };
+    add(entry);
+    try {
+      const [r, ms] = await timed(() => api.ingest(t, path));
+      await finish(entry, { steps: [toolAsStep("ingest_document", { path }, r, ms)], ms, model: "direct" }, t);
+      setCoordKey((k) => k + 1); // a changed fact may have proposed a notify_owner action
+    } catch (e) {
+      update(entry.id, { pending: false, error: (e as Error).message });
+    }
+  };
+
+  const runScenario = (s: Scenario) => {
+    setFlyout(null);
+    let t = tenant;
+    if (s.tenant && s.tenant !== tenant && tenants.includes(s.tenant)) { switchTenant(s.tenant); t = s.tenant; }
+    if (s.ingest) return ingest(s.ingest, s.question, t);
+    if (agentOnline) return ask(s.question, t);
+    if (s.tool) return runTool(s.tool[0], s.tool[1], s.question, t);
+  };
+
+  const addAgentResult = (label: string, r: AgentResult) => {
+    const entry: Entry = { id: newId(), question: label, mode: "agent", pending: false, steps: r.steps, answer: r.answer,
+                           model: r.model, fallbacks: r.fallbacks, conversationId: r.conversation_id,
+                           episode: r.episode || undefined, verification: r.verification };
+    add(entry);
+    setActiveId(entry.id);
+    showResult(entry, tenant);
+  };
+
   // Reopen a conversation: its messages come back from the graph (works after a restart)
-  const openConversation = async (id: string) => {
+  const openConversation = async (id: string | null) => {
+    setFlyout(null);
     if (!id) { setConversationId(null); setEntries([]); return; }
     try {
       const c = await api.conversation(tenant, id);
       const restored: Entry[] = [];
       for (let i = 0; i < c.messages.length; i += 2) {
         const q = c.messages[i], a = c.messages[i + 1];
-        restored.unshift({ id: newId(), question: q.text, mode: "agent", pending: false, steps: [], answer: a?.text,
-                           memory: `restored from ${id} (message ${q.seq})` });
+        restored.push({ id: newId(), question: q.text, mode: "agent", pending: false, steps: [], answer: a?.text,
+                        conversationId: id, restored: true });
       }
       setEntries(restored);
       setConversationId(id);
@@ -124,212 +251,198 @@ export default function Triveni() {
     }
   };
 
-  // ---------------------------------------------------------------- canvas for a result
-  const showResult = useCallback(async (entry: Entry) => {
-    const edges = new Map<string, GraphEdge>();
-    const ids = new Set<string>();
-    for (const s of entry.steps) {
-      for (const p of s.paths) {
-        p.nodes.forEach((n) => ids.add(n));
-        for (const ref of p.edges) {
-          const e = { ...parseEdge(ref), superseded: p.superseded, stale: p.stale };
-          ids.add(e.source); ids.add(e.target);
-          edges.set(edgeKey(e), e);
-        }
+  // ---------------------------------------------------------------- right panel
+  const openId = (id: string) => {
+    if (id.startsWith("doc:")) { setPanel({ ...(panel ?? {}), tab: "source", docId: id }); return; }
+    setSelected(id);
+    setPanel({ ...(panel ?? {}), tab: "node", nodeId: id });
+  };
+  const openCypher = (step: Step) => setPanel({ ...(panel ?? {}), tab: "cypher", step });
+  const openApprovals = () => setPanel({ ...(panel ?? {}), tab: "approvals" });
+  const selectNode = (id: string | null) => {
+    setSelected(id);
+    if (id) setPanel((p) => ({ ...(p ?? {}), tab: "node", nodeId: id }));
+  };
+
+  // ---------------------------------------------------------------- keyboard
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = (e.target as HTMLElement).closest("input, textarea, select");
+      if (e.key === "Escape") { if (flyout) setFlyout(null); else setPanel(null); return; }
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "/") { e.preventDefault(); composer.current?.focus(); return; }
+      if (!entries.length && !busy && /^[1-9]$/.test(e.key)) {
+        const s = SCENARIOS.find((x) => x.n === Number(e.key));
+        if (s) runScenario(s);
       }
-    }
-    if (!ids.size) return;
-    const nodes = await api.nodes(tenant, [...ids]);
-    const highlight = new Set<string>([...ids, ...edges.keys()]);
-    setGraph({ nodes, edges: [...edges.values()], highlight, title: `Evidence for: ${entry.question}` });
-  }, [tenant]);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
-  const update = (id: string, patch: Partial<Entry>) =>
-    setEntries((es) => es.map((e) => (e.id === id ? { ...e, ...patch } : e)));
-
-  const finish = async (id: string, patch: Partial<Entry>, base: Entry) => {
-    const done = { ...base, ...patch, pending: false };
-    update(id, { ...patch, pending: false });
-    setActiveId(id);
-    await showResult(done);
+  const submit = () => {
+    const q = question.trim();
+    if (!q || busy) return;
+    setQuestion("");
+    ask(q, tenant);
   };
-
-  // ---------------------------------------------------------------- actions
-  const runTool = async (name: string, args: Record<string, unknown>, label?: string) => {
-    const entry = pendingEntry(label ?? `${name}(${JSON.stringify(args)})`, "tool");
-    setEntries((es) => [entry, ...es]);
-    try {
-      const [r, ms] = await timed(() => api.runTool(tenant, name, args));
-      await finish(entry.id, { steps: [toolAsStep(name, args, r, ms)], data: r.data }, entry);
-    } catch (e) {
-      update(entry.id, { pending: false, error: (e as Error).message });
-    }
-  };
-
-  const ask = async (q: string) => {
-    const entry = pendingEntry(q, "agent");
-    setEntries((es) => [entry, ...es]);
-    // poll the backend's live status (provider tried, tool called, fallbacks) while the answer is pending
-    const runId = newRunId();
-    const poll = setInterval(() => {
-      api.askProgress(runId).then((p) => update(entry.id, { progress: p.events })).catch(() => {});
-    }, 700);
-    try {
-      const r = await api.ask(tenant, q, conversationId, runId).finally(() => clearInterval(poll));
-      setConversationId(r.conversation_id);
-      refreshConversations();
-      setCoordKey((k) => k + 1);
-      await finish(entry.id, { answer: r.answer, steps: r.steps, memory: `${r.conversation_id} · ${r.episode || "no episode"}`,
-                               verification: r.verification,
-                              model: r.fallbacks.length ? `${r.model} (fell back: ${r.fallbacks.map((f) => f.split(":")[0]).join(", ")})` : r.model }, entry);
-    } catch (e) {
-      update(entry.id, { pending: false, error: (e as Error).message });
-    }
-  };
-
-  const ingest = async (path: string, label: string) => {
-    const entry = pendingEntry(label, "ingest");
-    setEntries((es) => [entry, ...es]);
-    try {
-      const [r, ms] = await timed(() => api.ingest(tenant, path));
-      await finish(entry.id, { steps: [toolAsStep("ingest_document", { path }, r, ms)], data: r.data }, entry);
-      setCoordKey((k) => k + 1); // a changed fact may have proposed a notify_owner action
-    } catch (e) {
-      update(entry.id, { pending: false, error: (e as Error).message });
-    }
-  };
-
-  const runScenario = (s: (typeof SCENARIOS)[number]) => {
-    if (s.ingest) return ingest(s.ingest, s.question);
-    if (agentOnline) return ask(s.question);
-    if (s.tool) return runTool(s.tool[0], s.tool[1], s.question);
-  };
-
-  const openDoc = async (id: string) => {
-    setDrawer({ kind: "doc", id, doc: null });
-    try {
-      setDrawer({ kind: "doc", id, doc: await api.document(tenant, id) });
-    } catch (e) {
-      setDrawer({ kind: "doc", id, doc: null, error: (e as Error).message });
-    }
-  };
-
-  const openCypher = (step: Step) => setDrawer({ kind: "cypher", step });
-  const legend = useMemo(() => [...new Set(graph.nodes.map((n) => n.label))], [graph.nodes]);
 
   // ---------------------------------------------------------------- layout
-  return (
-    <div className="flex h-screen flex-col bg-gray-50 text-gray-900">
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-5 py-2.5">
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-lg font-bold tracking-tight">Triveni</h1>
-          <span className="text-xs text-gray-500">engineering Company Brain on FalkorDB · every answer proves its path</span>
+  const scenarioGrid = (compact: boolean) => (
+    <div className={`grid gap-3 ${compact ? "grid-cols-1" : "grid-cols-1 xl:grid-cols-3"}`}>
+      {TRACK_COLUMNS.map((col) => (
+        <div key={col.track} className="space-y-1.5">
+          <p className={`border-l-[3px] pl-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3 ${col.track === "01" ? "border-l-t01" : col.track === "02" ? "border-l-t02" : "border-l-t03"}`}>{col.title}</p>
+          {SCENARIOS.filter((s) => s.tracks.includes(col.track)).map((s) => (
+            <button key={`${col.track}-${s.n}`} disabled={busy} onClick={() => runScenario(s)}
+                    className="flex w-full items-start gap-2 rounded-md border border-line bg-panel px-2.5 py-2 text-left text-[13px] text-ink-2 hover:border-line-strong hover:bg-raised disabled:opacity-50">
+              <kbd className="mt-px rounded border border-line bg-raised px-1 font-mono text-[11px] text-ink-3">{s.n}</kbd>
+              <span className="leading-snug">{s.label}</span>
+            </button>
+          ))}
         </div>
-        <div className="flex items-center gap-3 text-xs">
-          <span className={health?.falkordb ? "text-green-700" : "text-red-700"}>● FalkorDB</span>
-          <span className={health?.model_backed ? "text-green-700" : "text-amber-600"}
-                title="Providers are tried in order; rules = keyword planner, no model (set GROQ_API_KEY / GEMINI_API_KEY)">
-            ● Agent {health ? health.providers.join(" → ") : "…"}
-          </span>
-          <label className="flex items-center gap-1">
-            tenant
-            <select value={tenant} onChange={(e) => switchTenant(e.target.value)}
-                    className="rounded border border-gray-300 bg-white px-1.5 py-0.5">
-              {(tenants.length ? tenants : [tenant]).map((t) => <option key={t}>{t}</option>)}
-            </select>
-          </label>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="flex h-screen flex-col bg-bg text-ink">
+      {/* top bar */}
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-panel px-4">
+        <span className="text-[15px] font-bold tracking-tight">Triveni</span>
+        <span className="h-5 w-px bg-line" aria-hidden />
+        <label className="flex items-center gap-1.5 text-xs text-ink-3">
+          <select value={tenant} onChange={(e) => switchTenant(e.target.value)} aria-label="Tenant"
+                  className="rounded-md border border-line bg-panel px-2 py-1 text-[13px] font-medium text-ink">
+            {(tenants.length ? tenants : [tenant]).map((t) => <option key={t}>{t}</option>)}
+          </select>
+          <span className="font-mono">tenant_{tenant}</span>
+        </label>
+        <div className="ml-auto flex items-center gap-2 text-xs">
+          {health?.demo_replay && <Chip tone="warn"><Repeat size={12} aria-hidden />Replay</Chip>}
+          <button onClick={openApprovals}
+                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium ${pendingApprovals ? "border-warn/40 bg-warn-soft text-warn" : "border-line text-ink-2 hover:bg-raised"}`}>
+            <ShieldCheck size={14} aria-hidden />Approvals
+            {pendingApprovals > 0 && <span className="rounded-full bg-warn px-1.5 text-[11px] text-white tabular-nums">{pendingApprovals}</span>}
+          </button>
         </div>
       </header>
 
-      {error && <div className="bg-red-50 px-5 py-2 text-sm text-red-800">{error}</div>}
+      {error && (
+        <div className="flex items-center gap-2 bg-bad-soft px-4 py-1.5 font-mono text-xs text-bad">
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} aria-label="Dismiss"><X size={14} /></button>
+        </div>
+      )}
 
       <main className="flex min-h-0 flex-1">
-        {/* left: scenarios, input, conversation */}
-        <section className="flex w-[460px] min-w-[400px] flex-col border-r border-gray-200 bg-gray-50">
-          <div className="space-y-2 border-b border-gray-200 bg-white p-3">
-            <div className="flex flex-wrap gap-1.5">
-              {SCENARIOS.map((s) => (
-                <button key={s.n} disabled={busy} onClick={() => runScenario(s)}
-                        className="rounded-full border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-100 disabled:opacity-50">
-                  <span className="font-semibold text-gray-500">#{s.n}</span> {s.label}
-                </button>
+        {/* icon sidebar */}
+        <nav aria-label="Sidebar" className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-line bg-panel py-2">
+          {([
+            ["scenarios", "Scenarios", LayoutGrid],
+            ["conversations", "Conversations", MessagesSquare],
+            ["tools", "Tools", Wrench],
+          ] as const).map(([key, label, Icon]) => (
+            <button key={key} title={label} aria-label={label} aria-pressed={flyout === key} onClick={() => setFlyout(flyout === key ? null : key)}
+                    className={`grid h-9 w-9 place-items-center rounded-md ${flyout === key ? "bg-accent-soft text-accent" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
+              <Icon size={18} />
+            </button>
+          ))}
+          <button title="Approvals" aria-label="Approvals" onClick={openApprovals}
+                  className={`relative grid h-9 w-9 place-items-center rounded-md ${panel?.tab === "approvals" ? "bg-accent-soft text-accent" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
+            <ShieldCheck size={18} />
+            {pendingApprovals > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-warn" aria-hidden />}
+          </button>
+        </nav>
+
+        {/* thread */}
+        <section className="relative flex w-[480px] min-w-[420px] shrink-0 flex-col border-r border-line bg-bg">
+          {flyout && (
+            <div className="absolute inset-x-0 top-0 z-20 max-h-[75%] overflow-auto border-b border-line bg-panel p-3 shadow-lg">
+              <div className="mb-2 flex items-center">
+                <h2 className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">{flyout}</h2>
+                <button onClick={() => setFlyout(null)} aria-label="Close" className="ml-auto rounded p-1 text-ink-3 hover:bg-raised"><X size={14} /></button>
+              </div>
+              {flyout === "scenarios" && scenarioGrid(true)}
+              {flyout === "tools" && <ToolRunner tools={tools} busy={busy} onRun={(n, a) => { setFlyout(null); runTool(n, a, undefined, tenant); }} />}
+              {flyout === "conversations" && (
+                <div className="space-y-1">
+                  <button onClick={() => openConversation(null)}
+                          className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-line-strong px-2.5 py-2 text-[13px] font-medium text-ink-2 hover:bg-raised">
+                    <Plus size={14} />New
+                  </button>
+                  {conversations.map((c) => (
+                    <button key={c.id} onClick={() => openConversation(c.id)}
+                            className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-raised ${c.id === conversationId ? "bg-accent-soft" : ""}`}>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] text-ink">{c.title}</span>
+                        <span className="font-mono text-[11px] text-ink-3">{c.id} · {(c.last_ts ?? c.started_ts).slice(0, 16).replace("T", " ")}</span>
+                      </span>
+                      <span className="text-xs tabular-nums text-ink-3">{c.messages}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex-1 space-y-3 overflow-auto p-4">
+            {entries.length === 0 ? scenarioGrid(false) : entries.map((e) => (
+              <EntryCard key={e.id} entry={e} tenant={tenant} active={e.id === activeId}
+                         focusStep={graph.entryId === e.id ? focusStep : null}
+                         onSelect={() => { setActiveId(e.id); showResult(e, tenant); }}
+                         onOpen={openId} onHover={setHover} onCypher={openCypher} onApprovals={openApprovals}
+                         onStep={(i) => {
+                           if (graph.entryId !== e.id) { setActiveId(e.id); showResult(e, tenant).then(() => setFocusStep(i)); }
+                           else setFocusStep(i);
+                         }}
+                         onCancel={() => aborts.current.get(e.id)?.abort()} />
+            ))}
+            <div ref={threadEnd} />
+          </div>
+
+          <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="border-t border-line bg-panel p-3">
+            <div className="flex items-center gap-2 rounded-lg border border-line-strong bg-panel px-3 py-2 focus-within:border-accent">
+              <input ref={composer} value={question} onChange={(e) => setQuestion(e.target.value)} disabled={!agentOnline}
+                     placeholder={agentOnline ? "Ask" : "Agent offline"} aria-label="Question"
+                     className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3 disabled:opacity-60" />
+              {conversationId && <span className="font-mono text-[11px] text-ink-3">{conversationId}</span>}
+              <button disabled={!agentOnline || busy || !question.trim()} aria-label="Send"
+                      className="grid h-7 w-7 place-items-center rounded-md bg-accent text-white disabled:opacity-40"><Send size={14} /></button>
+            </div>
+          </form>
+        </section>
+
+        {/* graph */}
+        <section className="flex min-w-0 flex-1 flex-col bg-panel">
+          <div className="flex h-10 shrink-0 items-center gap-3 border-b border-line px-3 text-xs">
+            <div role="tablist" className="flex rounded-md border border-line p-0.5">
+              {(["graph", "table"] as const).map((v) => (
+                <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)}
+                        className={`rounded px-2.5 py-0.5 font-medium capitalize ${view === v ? "bg-raised text-ink" : "text-ink-3 hover:text-ink"}`}>{v}</button>
               ))}
             </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-gray-500">conversation</span>
-              <select value={conversationId ?? ""} onChange={(e) => openConversation(e.target.value)}
-                      className="min-w-0 flex-1 rounded border border-gray-300 bg-white px-1.5 py-0.5">
-                <option value="">new conversation</option>
-                {conversations.map((c) => (
-                  <option key={c.id} value={c.id}>{c.id} · {c.messages} msgs · {c.title}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-1 text-xs">
-              {(["ask", "tool", "coord"] as const).map((p) => (
-                <button key={p} onClick={() => setPanel(p)}
-                        className={`rounded px-2 py-0.5 ${panel === p ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100"}`}>
-                  {p === "ask" ? "Ask the agent" : p === "tool" ? "Run a tool" : "Handoffs & approvals"}
-                </button>
-              ))}
-            </div>
-            {panel === "ask" ? (
-              <form onSubmit={(e) => { e.preventDefault(); if (question.trim()) { ask(question.trim()); setQuestion(""); } }}
-                    className="flex gap-2">
-                <input value={question} onChange={(e) => setQuestion(e.target.value)} disabled={!agentOnline}
-                       placeholder={agentOnline ? "Ask about services, owners, incidents, decisions…" : "Agent offline: use the scenarios or Run a tool"}
-                       className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-100" />
-                <button disabled={!agentOnline || busy}
-                        className="rounded bg-gray-900 px-3 text-sm font-medium text-white disabled:opacity-50">Ask</button>
-              </form>
-            ) : panel === "tool" ? (
-              <ToolRunner tools={tools} busy={busy} onRun={(n, a) => runTool(n, a)} />
-            ) : (
-              <Coordination tenant={tenant} refreshKey={coordKey} onResult={(label, r) => {
-                if (!r.result) return;
-                const res = r.result;
-                const entry: Entry = { id: newId(), question: label, mode: "agent", pending: false, steps: res.steps, answer: res.answer,
-                                       model: res.model, memory: `${res.conversation_id} · ${res.episode || "no episode"}`,
-                                       verification: res.verification };
-                setEntries((es) => [entry, ...es]);
-                setActiveId(entry.id);
-                showResult(entry);
-              }} />
+            <span className="min-w-0 flex-1 truncate font-medium text-ink-2" title={graph.title}>{graph.title}</span>
+            <span className="tabular-nums text-ink-3">{graph.nodes.length} nodes · {graph.edges.length} edges</span>
+            {focusStep !== null && <Chip tone="info">step {focusStep + 1}<button onClick={() => setFocusStep(null)} aria-label="Clear step"><X size={11} /></button></Chip>}
+            {graph.entryId && (
+              <button onClick={() => showOverview(tenant)} className="rounded-md border border-line px-2 py-1 font-medium text-ink-2 hover:bg-raised">Overview</button>
             )}
           </div>
-          <div className="flex-1 space-y-2 overflow-auto p-3">
-            {entries.length === 0 && (
-              <p className="pt-6 text-center text-sm text-gray-400">
-                Pick a scenario above. Each answer shows the tools used, the Cypher they ran, the path on the graph, and its sources.
-              </p>
-            )}
-            {entries.map((e) => (
-              <EntryCard key={e.id} entry={e} active={e.id === activeId}
-                         onSelect={() => { setActiveId(e.id); showResult(e); }} onCypher={openCypher} onDoc={openDoc} />
-            ))}
+          <div className="relative min-h-0 flex-1">
+            <div className={view === "graph" ? "h-full" : "hidden"}>
+              <GraphCanvas nodes={graph.nodes} edges={graph.edges} roots={graph.roots} focus={focus} hover={hover}
+                           layout={layout} onLayout={setLayout} selected={selected} onSelect={selectNode} />
+            </div>
+            {view === "table" && <GraphTable nodes={graph.nodes} edges={graph.edges} onOpen={openId} />}
           </div>
         </section>
 
-        {/* centre: graph canvas */}
-        <section className="relative flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-1.5 text-xs">
-            <span className="truncate text-gray-600">{graph.title}</span>
-            <div className="flex items-center gap-3">
-              {legend.map((l) => (
-                <span key={l} className="flex items-center gap-1 text-gray-600">
-                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: LABEL_COLOURS[l] }} />{l}
-                </span>
-              ))}
-              <button onClick={() => showOverview(tenant)} className="rounded border border-gray-300 px-2 py-0.5 hover:bg-gray-100">
-                Overview
-              </button>
-            </div>
-          </div>
-          <div className="min-h-0 flex-1">
-            <GraphCanvas nodes={graph.nodes} edges={graph.edges} highlight={graph.highlight} />
-          </div>
-          {drawer && <Drawer content={drawer} onClose={() => setDrawer(null)} onDoc={openDoc} />}
-        </section>
+        {panel && (
+          <RightPanel state={panel} tenant={tenant} refreshKey={coordKey}
+                      onTab={(t: PanelTab) => setPanel({ ...panel, tab: t })} onClose={() => setPanel(null)} onOpen={openId}
+                      onResult={addAgentResult} onChanged={() => setCoordKey((k) => k + 1)} />
+        )}
       </main>
     </div>
   );

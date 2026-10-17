@@ -1,25 +1,41 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { api, type ActionInfo, type HandoffInfo } from "@/lib/api";
+import { Bot, Check } from "lucide-react";
+import { api, type ActionInfo, type AgentResult, type HandoffInfo, type Person } from "@/lib/api";
+import { Chip, EntityChip, toneOf } from "./ui";
 
-const STATUS: Record<string, string> = {
-  open: "bg-amber-100 text-amber-800", claimed: "bg-blue-100 text-blue-800", done: "bg-green-100 text-green-800",
-  proposed: "bg-amber-100 text-amber-800", blocked: "bg-red-100 text-red-800", executed: "bg-green-100 text-green-800",
-  rejected: "bg-gray-200 text-gray-700", approved: "bg-blue-100 text-blue-800",
-};
+/* Approvals (Track 01) and handoffs (Track 02). Everything here is read from Action and Handoff nodes. */
 
-const Chip = ({ s }: { s: string }) => <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${STATUS[s] ?? ""}`}>{s}</span>;
+const HANDOFF_STEPS = ["open", "claimed", "done"];
 
-/** Track 02 coordination + Track 01 approvals: everything shown here is read from Handoff and Action nodes. */
-export default function Coordination({ tenant, refreshKey, onResult }: {
-  tenant: string; refreshKey: number; onResult: (label: string, r: Awaited<ReturnType<typeof api.runRemediation>>) => void;
+function Stepper({ status }: { status: string }) {
+  const at = HANDOFF_STEPS.indexOf(status);
+  return (
+    <ol className="flex items-center gap-1 text-[11px]">
+      {HANDOFF_STEPS.map((s, i) => (
+        <li key={s} className="flex items-center gap-1">
+          <span className={`grid h-4 w-4 place-items-center rounded-full border ${i <= at ? "border-accent bg-accent text-white" : "border-line-strong text-ink-3"}`}>
+            {i < at || (i === at && s === "done") ? <Check size={10} /> : null}
+          </span>
+          <span className={i === at ? "font-semibold text-ink" : "text-ink-3"}>{s}</span>
+          {i < HANDOFF_STEPS.length - 1 && <span className={`h-px w-4 ${i < at ? "bg-accent" : "bg-line-strong"}`} aria-hidden />}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export default function Approvals({ tenant, refreshKey, onOpen, onResult, onChanged }: {
+  tenant: string; refreshKey: number; onOpen: (id: string) => void;
+  onResult: (label: string, r: AgentResult) => void; onChanged: () => void;
 }) {
   const [handoffs, setHandoffs] = useState<HandoffInfo[]>([]);
   const [actions, setActions] = useState<ActionInfo[]>([]);
-  const [approver, setApprover] = useState("per:meera-pillai");
+  const [people, setPeople] = useState<Person[]>([]);
+  const [approver, setApprover] = useState("");
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     const [h, a] = await Promise.all([api.handoffs(tenant), api.actions(tenant)]);
@@ -29,84 +45,101 @@ export default function Coordination({ tenant, refreshKey, onResult }: {
 
   useEffect(() => {
     let live = true;
-    Promise.all([api.handoffs(tenant), api.actions(tenant)])
-      .then(([h, a]) => { if (live) { setHandoffs(h); setActions(a); } })
-      .catch((e) => live && setNote(e.message));
+    Promise.all([api.handoffs(tenant), api.actions(tenant), api.people(tenant)])
+      .then(([h, a, p]) => {
+        if (!live) return;
+        setHandoffs(h); setActions(a); setPeople(p);
+        setApprover((cur) => (p.some((x) => x.id === cur) ? cur : (p.find((x) => /manager|lead|director/i.test(x.role ?? ""))?.id ?? p[0]?.id ?? "")));
+      })
+      .catch((e) => live && setError(e.message));
     return () => { live = false; };
   }, [tenant, refreshKey]);
 
-  const runRemediation = async () => {
-    setBusy(true); setNote(null);
-    try {
-      const r = await api.runRemediation(tenant);
-      if (!r.handoff) setNote("No open handoff for agent:remediation.");
-      else onResult(`Remediation agent on ${r.handoff.id} (${r.handoff.incident})`, r);
-      await reload();
-    } catch (e) { setNote((e as Error).message); } finally { setBusy(false); }
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true); setError(null);
+    try { await fn(); await reload(); onChanged(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
 
-  const decideAction = async (id: string, approve: boolean) => {
-    setBusy(true); setNote(null);
-    try {
-      const r = await api.decide(tenant, id, approver, approve);
-      setNote(approve ? `${id} executed → ${r.delivered_to} (outbox ${r.outbox})` : `${id} rejected`);
-      await reload();
-    } catch (e) { setNote((e as Error).message); } finally { setBusy(false); }
-  };
+  const runRemediation = () => run(async () => {
+    const r = await api.runRemediation(tenant);
+    if (!r.handoff) { setError("No open handoff"); return; }
+    if (r.result) onResult(`Remediation · ${r.handoff.id} · ${r.handoff.incident}`, r.result);
+  });
+
+  const decide = (id: string, approve: boolean) => run(async () => { await api.decide(tenant, id, approver, approve); });
+
+  const order = ["proposed", "blocked", "approved", "executed", "rejected"];
+  const sorted = [...actions].sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status) || b.ts.localeCompare(a.ts));
 
   return (
-    <div className="space-y-3 text-xs">
-      <div className="flex items-center gap-2">
-        <button disabled={busy} onClick={runRemediation}
-                className="rounded bg-gray-900 px-2.5 py-1 font-medium text-white disabled:opacity-50">
-          {busy ? "Working…" : "Run remediation agent"}
-        </button>
-        <label className="flex items-center gap-1 text-gray-600">
-          approving as
-          <input value={approver} onChange={(e) => setApprover(e.target.value)}
-                 className="w-36 rounded border border-gray-300 px-1.5 py-0.5 font-mono" />
-        </label>
-      </div>
-      {note && <p className="rounded bg-gray-100 p-1.5 text-gray-700">{note}</p>}
+    <div className="space-y-5 text-xs">
+      {error && <p className="rounded-md bg-bad-soft px-2 py-1.5 text-bad">{error}</p>}
 
-      <div>
-        <p className="mb-1 font-semibold text-gray-700">Handoffs (graph nodes, the only channel between agents)</p>
-        {handoffs.length === 0 && <p className="text-gray-400">None yet. Ask scenario #6 to have triage hand off.</p>}
-        {handoffs.map((h) => (
-          <div key={h.id} className="mb-1 rounded border border-gray-200 bg-white p-1.5">
-            <div className="flex items-center gap-1.5">
-              <Chip s={h.status} /><span className="font-mono">{h.id}</span>
-              <span className="text-gray-500">{h.from} → {h.to} · {h.incident}</span>
-            </div>
-            <p className="mt-0.5 text-gray-700">{h.payload.summary}</p>
-            {h.result && <p className="mt-0.5 text-gray-500">result: {h.result}</p>}
-          </div>
-        ))}
-      </div>
-
-      <div>
-        <p className="mb-1 font-semibold text-gray-700">Actions (need a human; blocked when a current decision forbids them)</p>
-        {actions.length === 0 && <p className="text-gray-400">No proposed actions.</p>}
-        {actions.map((a) => (
-          <div key={a.id} className="mb-1 rounded border border-gray-200 bg-white p-1.5">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Chip s={a.status} /><span className="font-mono">{a.kind}</span><span className="text-gray-500">→ {a.target}</span>
-              <span className="text-gray-400">by {a.proposed_by}</span>
-            </div>
-            <p className="mt-0.5 text-gray-700">{String(a.args.title ?? a.args.reason ?? "")}</p>
-            {a.blocked_by.length > 0 && <p className="mt-0.5 text-red-700">blocked by {a.blocked_by.join(", ")}</p>}
-            {a.approved_by && <p className="mt-0.5 text-green-700">approved by {a.approved_by}{a.outbox ? ` · outbox ${a.outbox}` : ""}</p>}
-            {a.status === "proposed" && (
-              <div className="mt-1 flex gap-1.5">
-                <button disabled={busy} onClick={() => decideAction(a.id, true)}
-                        className="rounded bg-green-700 px-2 py-0.5 text-white disabled:opacity-50">Approve</button>
-                <button disabled={busy} onClick={() => decideAction(a.id, false)}
-                        className="rounded border border-gray-300 px-2 py-0.5 disabled:opacity-50">Reject</button>
+      <section>
+        <div className="mb-2 flex items-center gap-2">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">Actions · {actions.length}</h3>
+          <label className="ml-auto flex items-center gap-1 text-ink-3">
+            Approver
+            <select value={approver} onChange={(e) => setApprover(e.target.value)}
+                    className="max-w-40 rounded border border-line bg-panel px-1.5 py-1 text-xs text-ink">
+              {people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.role ? ` · ${p.role}` : ""}</option>)}
+            </select>
+          </label>
+        </div>
+        {sorted.length === 0 && <p className="text-ink-3">No actions</p>}
+        <div className="space-y-2">
+          {sorted.map((a) => (
+            <div key={a.id} className={`rounded-md border p-2.5 ${a.status === "proposed" ? "border-warn/40 bg-warn-soft/40" : "border-line"}`}>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Chip tone={toneOf(a.status)}>{a.status}</Chip>
+                <span className="font-mono font-semibold text-ink">{a.kind}</span>
+                <EntityChip id={a.target} onOpen={onOpen} />
+                <span className="ml-auto font-mono text-[11px] text-ink-3">{a.id}</span>
               </div>
-            )}
-          </div>
-        ))}
-      </div>
+              {(a.args.title || a.args.reason) ? <p className="mt-1.5 text-[13px] text-ink-2">{String(a.args.title ?? a.args.reason)}</p> : null}
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-ink-3">
+                <EntityChip id={a.proposed_by} onOpen={onOpen} />
+                {a.blocked_by.map((d) => <EntityChip key={d} id={d} onOpen={onOpen} />)}
+                {a.approved_by && <EntityChip id={a.approved_by} onOpen={onOpen} />}
+                {a.outbox && <Chip tone="ok">{a.outbox}</Chip>}
+              </div>
+              {a.status === "proposed" && (
+                <div className="mt-2 flex gap-1.5">
+                  <button disabled={busy || !approver} onClick={() => decide(a.id, true)}
+                          className="rounded-md bg-accent px-3 py-1 font-medium text-white hover:bg-accent/90 disabled:opacity-50">Approve</button>
+                  <button disabled={busy || !approver} onClick={() => decide(a.id, false)}
+                          className="rounded-md border border-line-strong px-3 py-1 font-medium text-ink-2 hover:bg-raised disabled:opacity-50">Reject</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-center gap-2">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">Handoffs · {handoffs.length}</h3>
+          <button disabled={busy} onClick={runRemediation}
+                  className="ml-auto inline-flex items-center gap-1 rounded-md border border-line-strong px-2 py-1 font-medium text-ink-2 hover:bg-raised disabled:opacity-50">
+            <Bot size={14} />{busy ? "Running…" : "Run remediation"}
+          </button>
+        </div>
+        {handoffs.length === 0 && <p className="text-ink-3">No handoffs</p>}
+        <div className="space-y-2">
+          {handoffs.map((h) => (
+            <div key={h.id} className="rounded-md border border-line p-2.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <EntityChip id={h.from} onOpen={onOpen} /><span className="text-ink-3">→</span><EntityChip id={h.to} onOpen={onOpen} />
+                {h.incident && <EntityChip id={h.incident} onOpen={onOpen} />}
+                <span className="ml-auto font-mono text-[11px] text-ink-3">{h.id}</span>
+              </div>
+              <div className="mt-2"><Stepper status={h.status} /></div>
+              {h.payload.summary && <p className="mt-1.5 text-[13px] text-ink-2">{h.payload.summary}</p>}
+              {h.result && <p className="mt-1 text-[13px] text-ink-3">{h.result}</p>}
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

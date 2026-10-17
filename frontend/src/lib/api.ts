@@ -33,6 +33,7 @@ export interface Step {
   paths: PathRef[];
   ms: number;
   via: string;
+  data?: Record<string, unknown>; // the tool's result data (agent steps and direct runs)
 }
 
 export interface Verification {
@@ -60,6 +61,7 @@ export interface Health {
   agent: boolean;
   providers: string[]; // tried in order; "rules" = no model
   model_backed: boolean;
+  demo_replay?: boolean;
 }
 
 export interface AgentResult {
@@ -127,6 +129,30 @@ export interface GraphEdge {
   stale?: boolean;
 }
 
+export interface NodeEdge {
+  type: string;
+  out: boolean; // true: this node -> other
+  id: string;
+  label: string;
+  name: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  source_doc: string | null;
+}
+
+export interface NodeDetail {
+  id: string;
+  label: string;
+  properties: Record<string, unknown>;
+  edges: NodeEdge[];
+}
+
+export interface Person {
+  id: string;
+  name: string;
+  role: string | null;
+}
+
 export interface Doc {
   id: string;
   title: string;
@@ -156,8 +182,9 @@ export const api = {
   tools: () => call<ToolInfo[]>("/api/tools"),
   runTool: (tenant: string, name: string, args: Record<string, unknown>) =>
     call<ToolResult>(`/api/tools/${name}`, { method: "POST", body: JSON.stringify({ tenant, args }) }),
-  ask: (tenant: string, question: string, conversation_id?: string | null, run_id?: string) =>
-    call<AgentResult>("/api/ask", { method: "POST", body: JSON.stringify({ tenant, question, conversation_id: conversation_id ?? null, run_id: run_id ?? null }) }),
+  ask: (tenant: string, question: string, conversation_id?: string | null, run_id?: string, signal?: AbortSignal) =>
+    call<AgentResult>("/api/ask", { method: "POST", signal,
+      body: JSON.stringify({ tenant, question, conversation_id: conversation_id ?? null, run_id: run_id ?? null }) }),
   askProgress: (run_id: string) => call<AskProgress>(`/api/ask/progress/${encodeURIComponent(run_id)}`),
   conversations: (tenant: string) =>
     call<ConversationInfo[]>(`/api/conversations?tenant=${encodeURIComponent(tenant)}`),
@@ -178,6 +205,9 @@ export const api = {
     call<{ nodes: GraphNode[]; edges: GraphEdge[] }>(`/api/graph/overview?tenant=${encodeURIComponent(tenant)}`),
   nodes: (tenant: string, ids: string[]) =>
     call<GraphNode[]>("/api/graph/nodes", { method: "POST", body: JSON.stringify({ tenant, ids }) }),
+  node: (tenant: string, id: string) =>
+    call<NodeDetail>(`/api/graph/node/${encodeURIComponent(id)}?tenant=${encodeURIComponent(tenant)}`),
+  people: (tenant: string) => call<Person[]>(`/api/people?tenant=${encodeURIComponent(tenant)}`),
   document: (tenant: string, id: string) =>
     call<Doc>(`/api/documents/${encodeURIComponent(id)}?tenant=${encodeURIComponent(tenant)}`),
 };
@@ -191,6 +221,6 @@ export function parseEdge(ref: string): GraphEdge {
 
 /** Wrap a direct tool run as a one-step result so the UI renders tools and agent answers the same way. */
 export function toolAsStep(name: string, input: Record<string, unknown>, r: ToolResult, ms: number): Step {
-  return { tool: name, input, why: "Run directly (no model)", ok: true, explanation: r.explanation, tracks: r.tracks,
-           sources: r.sources, cypher: r.cypher, params: r.params, paths: r.paths, ms, via: "http" };
+  return { tool: name, input, why: "", ok: true, explanation: r.explanation, tracks: r.tracks,
+           sources: r.sources, cypher: r.cypher, params: r.params, paths: r.paths, ms, via: "http", data: r.data };
 }

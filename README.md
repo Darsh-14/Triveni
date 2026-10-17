@@ -12,6 +12,9 @@ Built for **Graph Hacks: Context for AI Agents** (WeMakeDevs × FalkorDB). Track
 ## Why a graph
 Incident questions are about connections: what depends on this service, who owns it, what changed, which decision constrains us, who fixed this before. Each one is a traversal, and none is a text lookup. Every Triveni answer includes the Cypher it ran, the path it found, and the source documents behind it.
 
+## Interface
+One screen, laid out after tools engineers already use. Left: the thread, where every answer shows a verdict from the deterministic proof check, its source documents as cards, the answer with every cited id as a clickable chip, and the tool result as structured fields (who to page, decision chain, recalled episode, what changed, action awaiting approval). Centre: the evidence subgraph on a Cytoscape canvas (Force / Tree / Radial layouts, label and relationship filters, search, Dim, Graph | Table views). Right: node properties with current and historical edges, the Cypher and parameters of each step, the source document, and the approvals inbox. Clicking a step highlights only that step's path.
+
 ## Setup
 ```bash
 docker compose up -d falkordb                      # or use FalkorDB Cloud, see .env.example

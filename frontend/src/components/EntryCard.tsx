@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { ProgressEvent, Step, Track, Verification } from "@/lib/api";
-import { SourceChips, TrackBadges } from "./Badges";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleX, LoaderCircle, Code } from "lucide-react";
+import { api, type Doc, type ProgressEvent, type Step, type Track, type Verification } from "@/lib/api";
+import { docKindOfId, ID_PATTERN } from "@/lib/entities";
+import Callouts from "./Callouts";
+import { Chip, DocIcon, EntityChip, TrackTags, type Tone } from "./ui";
 
 export interface Entry {
   id: string;
@@ -14,131 +17,262 @@ export interface Entry {
   error?: string;
   data?: unknown;
   model?: string;
-  memory?: string; // conversation / episode written for this answer
+  fallbacks?: string[];
+  conversationId?: string;
+  episode?: string;
+  restored?: boolean;
   verification?: Verification;
-  startedAt?: number; // Date.now() when the request was sent, for the live elapsed counter
-  progress?: ProgressEvent[]; // live status lines from the backend while an agent answer is pending
-}
-
-const PENDING_LABEL: Record<Entry["mode"], string> = {
-  agent: "Agent is working",
-  tool: "Running the tool on the graph",
-  ingest: "Extracting facts and merging them into the graph",
-};
-
-/** Spinner, live elapsed seconds, the current step, and the trail of what was tried (providers, tools, fallbacks). */
-function PendingStatus({ entry }: { entry: Entry }) {
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    const started = entry.startedAt ?? Date.now();
-    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 250);
-    return () => clearInterval(timer);
-  }, [entry.startedAt]);
-  const events = entry.progress ?? [];
-  const current = events.at(-1)?.msg;
-  return (
-    <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
-      <div className="flex items-center gap-2">
-        <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-700" />
-        <span className="font-semibold">{PENDING_LABEL[entry.mode]}…</span>
-        <span className="ml-auto tabular-nums text-blue-700">{elapsed}s</span>
-      </div>
-      {current && <p className="mt-1.5 font-medium">{current}</p>}
-      {events.length > 1 && (
-        <ol className="mt-1 space-y-0.5 text-[11px] text-blue-700/80">
-          {events.slice(0, -1).map((e, i) => <li key={i}><span className="tabular-nums">{e.t.toFixed(1)}s</span> · {e.msg}</li>)}
-        </ol>
-      )}
-      {entry.mode === "agent" && elapsed >= 8 && (
-        <p className="mt-1.5 text-[11px] text-blue-700/80">Free-tier models can be slow or rate limited; Triveni falls back to the next provider, then to rules mode.</p>
-      )}
-    </div>
-  );
-}
-
-const VERDICT: Record<string, string> = {
-  verified: "bg-green-100 text-green-800 border-green-300",
-  partially_verified: "bg-amber-100 text-amber-800 border-amber-300",
-  unverified: "bg-red-100 text-red-800 border-red-300",
-  no_citations: "bg-gray-100 text-gray-600 border-gray-300",
-};
-
-/** Deterministic proof check: every id the answer cites must exist in the graph and come from a tool result. */
-function ProofBadge({ v }: { v: Verification }) {
-  const label = v.verdict === "no_citations" ? "no ids cited"
-    : `${v.verdict === "verified" ? "✓" : "!"} ${v.grounded.length}/${v.cited} claims grounded`;
-  return (
-    <div className="mt-2 text-[11px]">
-      <span className={`rounded border px-1.5 py-0.5 font-semibold ${VERDICT[v.verdict]}`}
-            title="Checked by code, not a model: each cited id must exist in this tenant's graph and appear in a tool result from this run">
-        proof check: {label}
-      </span>
-      {v.unbacked.length > 0 && <span className="ml-1.5 text-amber-700">not shown by a tool: {v.unbacked.join(", ")}</span>}
-      {v.unknown.length > 0 && <span className="ml-1.5 font-semibold text-red-700">not in the graph: {v.unknown.join(", ")}</span>}
-    </div>
-  );
+  startedAt?: number;
+  ms?: number; // total time once done
+  progress?: ProgressEvent[];
 }
 
 export const entryTracks = (e: Entry): Track[] => [...new Set(e.steps.flatMap((s) => s.tracks))];
 export const entrySources = (e: Entry): string[] => [...new Set(e.steps.flatMap((s) => s.sources))].sort();
 
-interface Props {
-  entry: Entry;
-  active: boolean;
-  onSelect: () => void;
+interface Handlers {
+  onOpen: (id: string) => void;          // entity or document id -> right panel
+  onHover: (id: string | null) => void;  // highlight on canvas
   onCypher: (step: Step) => void;
-  onDoc: (id: string) => void;
+  onStep: (index: number | null) => void; // highlight one step's paths
+  onApprovals: () => void;
+  onCancel: () => void;
 }
 
-export default function EntryCard({ entry, active, onSelect, onCypher, onDoc }: Props) {
+// ------------------------------------------------------------------ pending: spinner, elapsed, tool chips
+function Pending({ entry, onCancel }: { entry: Entry; onCancel: () => void }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, []);
+  const elapsed = Math.max(0, Math.floor((now - (entry.startedAt ?? now)) / 1000));
+  const events = entry.progress ?? [];
+  const tools = events.map((e) => /calling (\S+) over MCP/.exec(e.msg)?.[1]).filter(Boolean) as string[];
+  const failed = events.map((e) => /^(\S+) unavailable/.exec(e.msg)?.[1]).filter(Boolean) as string[];
+  const provider = [...events].reverse().map((e) => /^(\w+): /.exec(e.msg)?.[1]).find(Boolean);
   return (
-    <div onClick={onSelect}
-         className={`cursor-pointer rounded-lg border bg-white p-3 shadow-sm ${active ? "border-gray-900" : "border-gray-200"}`}>
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-semibold text-gray-900">{entry.question}</p>
-        <TrackBadges tracks={entryTracks(entry)} />
-      </div>
+    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs" aria-live="polite">
+      <LoaderCircle size={14} className="animate-spin text-accent" aria-label="Working" />
+      <span className="tabular-nums text-ink-3">{elapsed}s</span>
+      {failed.map((p) => <Chip key={p} tone="muted"><span className="line-through">{p}</span></Chip>)}
+      {provider && <Chip tone="info">{provider}</Chip>}
+      {tools.map((t, i) => (
+        <Chip key={i} tone={i === tools.length - 1 ? "info" : "ok"}>
+          <span className="font-mono">{t}</span>{i === tools.length - 1 ? " …" : " ✓"}
+        </Chip>
+      ))}
+      {entry.mode === "agent" && <button onClick={onCancel} className="ml-auto text-ink-3 hover:text-ink">Cancel</button>}
+    </div>
+  );
+}
 
-      {entry.pending && <PendingStatus entry={entry} />}
-      {entry.error && <p className="mt-2 rounded bg-red-50 p-2 text-xs text-red-700">{entry.error}</p>}
-      {entry.answer && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{entry.answer}</p>}
-      {entry.verification && <ProofBadge v={entry.verification} />}
+// ------------------------------------------------------------------ verdict (deterministic proof check)
+const VERDICT: Record<Verification["verdict"], { word: string; tone: Tone; Icon: typeof CircleCheck }> = {
+  verified: { word: "Verified", tone: "ok", Icon: CircleCheck },
+  partially_verified: { word: "Partly verified", tone: "warn", Icon: CircleAlert },
+  unverified: { word: "Unverified", tone: "bad", Icon: CircleX },
+  no_citations: { word: "No citations", tone: "muted", Icon: CircleAlert },
+};
 
-      {entry.steps.length > 0 && (
-        <ol className="mt-3 space-y-1.5 border-l-2 border-gray-200 pl-3">
+function VerdictChip({ v }: { v: Verification }) {
+  const { word, tone, Icon } = VERDICT[v.verdict];
+  return (
+    <Chip tone={tone}>
+      <Icon size={12} aria-hidden />{word}{v.verdict !== "no_citations" && <span className="tabular-nums"> {v.grounded.length}/{v.cited}</span>}
+    </Chip>
+  );
+}
+
+// ------------------------------------------------------------------ sources row (cards above the answer)
+const docCache = new Map<string, Promise<Doc | null>>();
+function useDocs(tenant: string, ids: string[]) {
+  const [docs, setDocs] = useState<Record<string, Doc | null>>({});
+  const key = ids.join(",");
+  useEffect(() => {
+    let live = true;
+    ids.forEach((id) => {
+      const k = `${tenant}|${id}`;
+      if (!docCache.has(k)) docCache.set(k, api.document(tenant, id).catch(() => null));
+      docCache.get(k)!.then((d) => live && setDocs((m) => ({ ...m, [id]: d })));
+    });
+    return () => { live = false; };
+  }, [tenant, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return docs;
+}
+
+function SourcesRow({ tenant, ids, onOpen }: { tenant: string; ids: string[]; onOpen: (id: string) => void }) {
+  const docs = useDocs(tenant, ids);
+  if (!ids.length) return null;
+  return (
+    <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+      {ids.map((id, i) => {
+        const d = docs[id];
+        const kind = d?.kind ?? docKindOfId(id);
+        return (
+          <button key={id} onClick={(e) => { e.stopPropagation(); onOpen(id); }} title={id}
+                  className="flex w-44 shrink-0 flex-col gap-0.5 rounded-md border border-line bg-raised px-2 py-1.5 text-left hover:border-line-strong">
+            <span className="flex items-center gap-1 text-[11px] text-ink-3">
+              <span className="tabular-nums">{i + 1}</span><DocIcon kind={kind} size={12} />{kind}
+            </span>
+            <span className="line-clamp-2 text-xs font-medium leading-snug text-ink">{d?.title ?? id}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ answer text: ids become citation chips
+const CITED = new RegExp(String.raw`\s?[(\[]\s*(${ID_PATTERN.source})\s*[)\]]|${ID_PATTERN.source}`, "gi");
+function inline(text: string, h: Handlers, key: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  // **bold**, `code` and the model's 【tool】 citations; everything else is text with id chips
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|【[^】]+】)/g);
+  parts.forEach((part, pi) => {
+    if (/^`[^`]+`$/.test(part) && !new RegExp(`^\`${ID_PATTERN.source}\`$`, "i").test(part)) {
+      out.push(<code key={`${key}-${pi}`} className="rounded bg-raised px-1 font-mono text-[12px] text-ink">{part.slice(1, -1)}</code>);
+      return;
+    }
+    if (part.startsWith("【")) {
+      out.push(<span key={`${key}-${pi}`} className="ml-0.5 rounded bg-raised px-1 font-mono text-[11px] text-ink-3">{part.slice(1, -1)}</span>);
+      return;
+    }
+    const bold = part.startsWith("**") && part.endsWith("**");
+    const body = bold ? part.slice(2, -2) : part.replace(/^`|`$/g, "");
+    let last = 0;
+    const nodes: ReactNode[] = [];
+    // "(svc:x)" or "[svc:x]" right after a name is a citation: icon-only marker; a bare id is a full chip
+    for (const m of body.matchAll(CITED)) {
+      nodes.push(body.slice(last, m.index));
+      const id = m[1] ?? m[0];
+      nodes.push(<EntityChip key={`${key}-${pi}-${m.index}`} id={id} compact={Boolean(m[1])} onOpen={h.onOpen} onHover={h.onHover} />);
+      last = (m.index ?? 0) + m[0].length;
+    }
+    nodes.push(body.slice(last));
+    out.push(bold ? <strong key={`${key}-${pi}`} className="font-semibold text-ink">{nodes}</strong> : <Fragment key={`${key}-${pi}`}>{nodes}</Fragment>);
+  });
+  return out;
+}
+
+function AnswerText({ text, h }: { text: string; h: Handlers }) {
+  const lines = text.split("\n");
+  const blocks: ReactNode[] = [];
+  let list: { ordered: boolean; items: string[] } | null = null;
+  const flush = () => {
+    if (!list) return;
+    const Tag = list.ordered ? "ol" : "ul";
+    blocks.push(<Tag key={`l${blocks.length}`} className={`${list.ordered ? "list-decimal" : "list-disc"} space-y-1 pl-5`}>
+      {list.items.map((it, i) => <li key={i}>{inline(it, h, `l${blocks.length}-${i}`)}</li>)}</Tag>);
+    list = null;
+  };
+  lines.forEach((line, i) => {
+    const m = /^\s*(?:([-*•])|(\d+)[.)])\s+(.*)$/.exec(line);
+    if (m) {
+      const ordered = Boolean(m[2]);
+      if (!list || list.ordered !== ordered) { flush(); list = { ordered, items: [] }; }
+      list.items.push(m[3]);
+      return;
+    }
+    flush();
+    const heading = /^#{1,4}\s+(.*)$/.exec(line);
+    if (heading) blocks.push(<p key={i} className="font-semibold text-ink">{inline(heading[1], h, `h${i}`)}</p>);
+    else if (line.trim()) blocks.push(<p key={i}>{inline(line, h, `p${i}`)}</p>);
+  });
+  flush();
+  return <div className="max-w-[65ch] space-y-2 text-sm leading-relaxed text-ink-2">{blocks}</div>;
+}
+
+// ------------------------------------------------------------------ card
+export default function EntryCard({ entry, tenant, active, focusStep, onSelect, ...h }: {
+  entry: Entry; tenant: string; active: boolean; focusStep: number | null; onSelect: () => void;
+} & Handlers) {
+  const [showSteps, setShowSteps] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const sources = entrySources(entry);
+  const tracks = entryTracks(entry);
+
+  return (
+    <article className={`rounded-lg border bg-panel p-4 ${active ? "border-accent ring-1 ring-accent/20" : "border-line"}`}>
+      <button onClick={onSelect} className="w-full text-left">
+        <h3 className="text-base font-semibold leading-snug text-ink">{entry.question}</h3>
+      </button>
+
+      {entry.pending && <Pending entry={entry} onCancel={h.onCancel} />}
+      {entry.error && <p className="mt-2 rounded-md bg-bad-soft px-2 py-1.5 text-xs text-bad">{entry.error}</p>}
+
+      {!entry.pending && !entry.error && (entry.steps.length > 0 || entry.verification || entry.model) && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {entry.verification && <VerdictChip v={entry.verification} />}
+          {entry.steps.length > 0 && (
+            <button onClick={() => setShowSteps((v) => !v)} aria-expanded={showSteps}
+                    className="inline-flex items-center gap-0.5 rounded border border-line bg-panel px-1.5 py-0.5 text-xs font-medium text-ink-2 hover:bg-raised">
+              {showSteps ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              {entry.steps.length} tool{entry.steps.length > 1 ? "s" : ""}
+            </button>
+          )}
+          {entry.ms !== undefined && <span className="text-xs tabular-nums text-ink-3">{(entry.ms / 1000).toFixed(1)} s</span>}
+          {entry.fallbacks?.map((f) => <Chip key={f}><span className="line-through">{f.split(":")[0]}</span></Chip>)}
+          {entry.model && <Chip tone="info">{entry.model}</Chip>}
+          <span className="ml-auto"><TrackTags tracks={tracks} /></span>
+        </div>
+      )}
+
+      {entry.verification && (entry.verification.unbacked.length > 0 || entry.verification.unknown.length > 0) && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {entry.verification.unbacked.map((id) => <Chip key={id} tone="warn">{id}</Chip>)}
+          {entry.verification.unknown.map((id) => <Chip key={id} tone="bad">{id}</Chip>)}
+        </div>
+      )}
+
+      {showSteps && (
+        <ol className="mt-2 divide-y divide-line rounded-md border border-line">
           {entry.steps.map((s, i) => (
-            <li key={i} className="text-xs">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="font-mono text-gray-400">{i + 1}.</span>
-                <span className="rounded bg-gray-900 px-1.5 py-0.5 font-mono text-[11px] text-white">{s.tool}</span>
-                <span className="font-mono text-[11px] text-gray-500">{JSON.stringify(s.input)}</span>
-                <span className="text-[10px] uppercase text-gray-400">via {s.via} · {s.ms} ms</span>
-                <button onClick={(ev) => { ev.stopPropagation(); onCypher(s); }}
-                        className="rounded border border-gray-300 px-1.5 text-[10px] text-gray-600 hover:bg-gray-100">
-                  Cypher
-                </button>
-              </div>
-              {s.why && s.via !== "http" && <p className="mt-0.5 italic text-gray-500">why: {s.why}</p>}
-              <p className={`mt-0.5 ${s.ok ? "text-gray-700" : "text-red-700"}`}>{s.explanation}</p>
+            <li key={i} className={`flex items-center gap-2 px-2 py-1.5 text-xs ${focusStep === i ? "bg-accent-soft" : ""}`}>
+              <button onClick={() => h.onStep(focusStep === i ? null : i)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                <span className="w-4 tabular-nums text-ink-3">{i + 1}</span>
+                <span title={s.explanation} className={`font-mono font-medium ${s.ok ? "text-ink" : "text-bad"}`}>{s.tool}</span>
+                <span className="truncate font-mono text-ink-3">{JSON.stringify(s.input)}</span>
+              </button>
+              <span className="tabular-nums text-ink-3">{s.ms} ms</span>
+              {s.cypher && (
+                <button onClick={() => h.onCypher(s)} title="Cypher" aria-label={`Cypher for ${s.tool}`}
+                        className="rounded p-0.5 text-ink-3 hover:bg-raised hover:text-ink"><Code size={14} /></button>
+              )}
             </li>
           ))}
         </ol>
       )}
 
-      {entry.data !== undefined && (
-        <details className="mt-2" onClick={(e) => e.stopPropagation()}>
-          <summary className="cursor-pointer text-[11px] text-gray-500">Result data</summary>
-          <pre className="mt-1 max-h-60 overflow-auto rounded bg-gray-50 p-2 text-[10px]">
-            {JSON.stringify(entry.data, null, 2)}
-          </pre>
-        </details>
+      {sources.length > 0 && <div className="mt-3"><SourcesRow tenant={tenant} ids={sources} onOpen={h.onOpen} /></div>}
+
+      {entry.answer && <div className="mt-3"><AnswerText text={entry.answer} h={h} /></div>}
+
+      {entry.steps.length > 0 && (
+        <div className="mt-3">
+          <Callouts steps={entry.steps} onOpen={h.onOpen} onHover={h.onHover} onApprovals={h.onApprovals} />
+        </div>
       )}
 
-      <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-        <SourceChips sources={entrySources(entry)} onOpen={onDoc} />
-      </div>
-      {entry.model && <p className="mt-1 text-[10px] text-gray-400">model: {entry.model}</p>}
-      {entry.memory && <p className="mt-0.5 text-[10px] text-blue-600">memory: {entry.memory}</p>}
-    </div>
+      {!entry.pending && (entry.data !== undefined || entry.conversationId || entry.steps.some((s) => s.data)) && (
+        <div className="mt-3">
+          <button onClick={() => setShowDetails((v) => !v)} aria-expanded={showDetails}
+                  className="inline-flex items-center gap-0.5 text-xs text-ink-3 hover:text-ink">
+            {showDetails ? <ChevronDown size={12} /> : <ChevronRight size={12} />}Details
+          </button>
+          {showDetails && (
+            <div className="mt-1.5 space-y-1.5">
+              <div className="flex flex-wrap gap-1">
+                {entry.conversationId && <EntityChip id={entry.conversationId} onOpen={h.onOpen} />}
+                {entry.episode && <EntityChip id={entry.episode} onOpen={h.onOpen} />}
+              </div>
+              <pre className="max-h-64 overflow-auto rounded-md bg-raised p-2 font-mono text-[11px] text-ink-2">
+                {JSON.stringify(entry.data ?? entry.steps.map((s) => ({ tool: s.tool, data: s.data })), null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </article>
   );
 }
