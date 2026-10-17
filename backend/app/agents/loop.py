@@ -43,6 +43,7 @@ class Step:
     paths: list[dict]
     ms: int
     via: str = "mcp"
+    data: dict = field(default_factory=dict)  # the tool's result data, so the UI can render it (owner, recall, changes)
 
 
 @dataclass
@@ -115,7 +116,7 @@ async def _run_with(provider, session, tools, question, tenant, system, history,
                 tool=call.name, input=call.args or {}, why=turn.text, ok=not is_error,
                 explanation=sc.get("explanation", text if is_error else ""), tracks=sc.get("tracks", []),
                 sources=sc.get("sources", []), cypher=sc.get("cypher", ""), params=sc.get("params", {}),
-                paths=sc.get("paths", []), ms=ms))
+                paths=sc.get("paths", []), ms=ms, data=sc.get("data", {}) if not is_error else {}))
             outputs.append((call, text, is_error))
         messages.extend(provider.tool_results(outputs))
     result.answer = "Stopped: too many tool rounds without a final answer."

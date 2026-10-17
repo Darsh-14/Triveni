@@ -44,7 +44,8 @@ def tenant_graph(tenant: str):
 @app.get("/api/health")
 def health():
     providers = provider_order()  # e.g. ["groq", "gemini", "rules"]; rules (no model) is always last
-    return {"falkordb": ping(), "agent": True, "providers": providers, "model_backed": providers[0] != "rules"}
+    return {"falkordb": ping(), "agent": True, "providers": providers, "model_backed": providers[0] != "rules",
+            "demo_replay": os.getenv("DEMO_REPLAY") == "1"}
 
 
 @app.get("/api/tenants")
@@ -187,6 +188,36 @@ def nodes(body: NodeIds):
     rows = tenant_graph(body.tenant).ro_query(NODES, {"ids": body.ids}).result_set
     return [{"id": i, "label": label, "name": name, "tier": tier, "kind": kind, "status": status}
             for i, label, name, tier, kind, status in rows]
+
+
+NODE = "MATCH (n {id: $id}) RETURN labels(n)[0], properties(n)"
+NODE_EDGES = """
+MATCH (n {id: $id})-[r]-(m) WHERE r.derived IS NULL
+RETURN type(r), startNode(r) = n, m.id, labels(m)[0], coalesce(m.name, m.title, m.version, m.id),
+       r.valid_from, r.valid_to, r.source_doc
+LIMIT 200
+"""
+PEOPLE = "MATCH (p:Person) RETURN p.id, p.name, p.role ORDER BY p.name"
+
+
+@app.get("/api/graph/node/{node_id}")
+def node_detail(node_id: str, tenant: str):
+    """One node's properties and its fact edges, current and historical (derived projections left out)."""
+    g = tenant_graph(tenant)
+    rows = g.ro_query(NODE, {"id": node_id}).result_set
+    if not rows:
+        raise HTTPException(404, f"no node {node_id}")
+    label, props = rows[0]
+    props = {k: (v[:400] + "…" if isinstance(v, str) and len(v) > 400 else v) for k, v in props.items()}
+    edges = [{"type": t, "out": out, "id": mid, "label": mlabel, "name": mname,
+              "valid_from": vf, "valid_to": vt, "source_doc": src}
+             for t, out, mid, mlabel, mname, vf, vt, src in g.ro_query(NODE_EDGES, {"id": node_id}).result_set]
+    return {"id": node_id, "label": label, "properties": props, "edges": edges}
+
+
+@app.get("/api/people")
+def people(tenant: str):
+    return [{"id": i, "name": n, "role": r} for i, n, r in tenant_graph(tenant).ro_query(PEOPLE).result_set]
 
 
 @app.get("/api/documents/{doc_id}")

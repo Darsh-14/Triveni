@@ -442,3 +442,22 @@ OPTIONAL MATCH (t:Team)-[o:OWNS]->(s) WHERE o.valid_to IS NULL
 OPTIONAL MATCH (p:Person)-[c:ON_CALL_FOR]->(s) WHERE c.valid_to IS NULL
 RETURN t.id, t.name, p.id, p.name
 ```
+
+## UI support (read-only)
+
+### Node detail for the right panel **[F] [03]**
+`backend/app/main.py` → `GET /api/graph/node/{id}`. Properties of one node, then its fact edges in both directions with their temporal fields and source document. Derived projection edges (`derived: true`) are left out so the panel shows only facts. Long string properties are cut to 400 characters in Python.
+```cypher
+MATCH (n {id: $id}) RETURN labels(n)[0], properties(n)
+
+MATCH (n {id: $id})-[r]-(m) WHERE r.derived IS NULL
+RETURN type(r), startNode(r) = n, m.id, labels(m)[0], coalesce(m.name, m.title, m.version, m.id),
+       r.valid_from, r.valid_to, r.source_doc
+LIMIT 200
+```
+
+### People for the approver picker **[01]**
+`backend/app/main.py` → `GET /api/people`. The approver is chosen from Person nodes instead of typed, so an approval always names a real person.
+```cypher
+MATCH (p:Person) RETURN p.id, p.name, p.role ORDER BY p.name
+```

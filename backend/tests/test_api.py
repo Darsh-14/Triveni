@@ -74,3 +74,14 @@ def test_ask_progress_is_pollable(client, acme, monkeypatch):
     p = client.get("/api/ask/progress/run:t1234").json()
     assert p["done"] is True and any("calling blast_radius" in e["msg"] for e in p["events"])
     assert client.post("/api/ask", json={"tenant": "test_acme", "question": "hi there", "run_id": "bad id"}).status_code == 422
+
+
+def test_node_detail_and_people(client):
+    n = client.get("/api/graph/node/svc:payments-api", params={"tenant": "test_acme"}).json()
+    assert n["label"] == "Service" and n["properties"]["name"] == "payments-api"
+    assert {"type": "DEPENDS_ON", "out": False, "id": "svc:orders-api"}.items() <= next(
+        e for e in n["edges"] if e["type"] == "DEPENDS_ON" and e["id"] == "svc:orders-api").items()
+    assert not any(e["type"] in ("KNOWS", "KNOWN_BY", "RESPONSIBLE_FOR") for e in n["edges"])  # derived edges hidden
+    assert client.get("/api/graph/node/svc:none", params={"tenant": "test_acme"}).status_code == 404
+    people = client.get("/api/people", params={"tenant": "test_acme"}).json()
+    assert {"id": "per:arjun-mehta", "name": "Arjun Mehta"}.items() <= next(p for p in people if p["id"] == "per:arjun-mehta").items()
