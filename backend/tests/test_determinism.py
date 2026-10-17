@@ -127,3 +127,14 @@ def test_dependency_paths_use_current_edges_only(loaded):
         assert "all(r IN relationships(p) WHERE r.valid_to IS NULL)" in q
     r = run_tool(T, "shortest_path", {"from": "checkout-web", "to": "payments-api"})
     assert r.data["found"] and r.data["includes_ended_edges"] == []
+
+
+def test_rules_mode_answers_a_typo_with_suggestions(loaded):
+    import anyio
+
+    from backend.app.agents.loop import run_agent
+    from backend.app.agents.triage import SYSTEM
+
+    r = anyio.run(lambda: run_agent("Is paymnts-api down?", T, SYSTEM, persist=False, providers=[RulesProvider()]))
+    assert [(s.tool, s.outcome) for s in r.steps] == [("describe", "unknown_entity")]
+    assert "did you mean payments-api" in r.answer and r.verification["verdict"] == "verified" and not r.guard

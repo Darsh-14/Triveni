@@ -327,6 +327,10 @@ class RulesProvider:
             return [("describe", {"entity": teams[0]["id"]})]
         if people:
             return [("describe", {"entity": people[0]["id"]})]
+        # 8. nothing in the graph matched, but something looks like a name ("paymnts-api", "inc:9999"): let the
+        #    resolver answer, so the reply is an explicit unknown_entity with suggestions, not silence
+        if entities is not None and (typed := ID_RE.findall(q) + SERVICE_RE.findall(q)):
+            return [("describe", {"entity": typed[0]})]
         return []
 
     def _entities(self, question: str) -> list[dict] | None:
@@ -350,8 +354,7 @@ class RulesProvider:
                                  + (f"; entities found in the graph: {named}." if named else "."), calls=calls,
                             assistant_message={"role": "assistant", "content": "", "rules_calls": plan}, model="rules")
             return Turn(text="Rules mode (no model available): the question names no service, person, team, incident or "
-                             "decision in this graph, so nothing was looked up. Try e.g. payments-api, Priya Nair, "
-                             "Team Ledger, inc:0042 or ADR-019.", model="rules")
+                             "decision in this graph, so nothing was looked up. Name one, by name or id.", model="rules")
         explanations = []
         for m in messages:
             if m.get("role") == "tool":

@@ -235,7 +235,7 @@ def compose_answer(steps: list[Step]) -> str:
     lines = [s.explanation for s in steps if s.ok and s.explanation]
     if not lines:
         return ("No graph evidence was gathered for this question, so no answer is given. Name a service, person, "
-                "team or incident (e.g. payments-api, Priya Nair, Team Ledger, inc:0042).")
+                "team, incident or decision from this graph, by name or id.")
     return "From the graph tools only:\n- " + "\n- ".join(dict.fromkeys(lines))
 
 
