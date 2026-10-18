@@ -329,17 +329,26 @@ class RulesProvider:
             return [("describe", {"entity": people[0]["id"]})]
         # 8. nothing in the graph matched, but something looks like a name ("paymnts-api", "inc:9999"): let the
         #    resolver answer, so the reply is an explicit unknown_entity with suggestions, not silence
-        if entities is not None and (typed := ID_RE.findall(q) + SERVICE_RE.findall(q)):
-            return [("describe", {"entity": typed[0]})]
+        if near := [e for e in ents if e["label"] == "near_miss"]:
+            return [("describe", {"entity": near[0]["id"]})]
         return []
 
     def _entities(self, question: str) -> list[dict] | None:
         if not self.tenant:
             return None
-        from backend.app.graph.resolve import spot  # lazy: providers stay importable without a database
+        from backend.app.graph.resolve import SPOT_LABELS, Catalog, spot, suggestions  # lazy: no database at import
         from backend.app.graph.tenant import get_graph
 
-        return spot(get_graph(self.tenant), question)
+        graph = get_graph(self.tenant)
+        catalog = Catalog.load(graph, SPOT_LABELS)
+        found = spot(graph, question, catalog)
+        if found:
+            return found
+        # nothing matched: a typed id ("inc:9999") or a token close to a real name ("paymnts-api") is a near miss
+        # worth an explicit unknown_entity answer; ordinary hyphenated words ("tier-1", "on-call") are not
+        q = question.lower()
+        near = ID_RE.findall(q) + [t for t in SERVICE_RE.findall(q) if suggestions(t, catalog.rows)]
+        return [{"id": t, "label": "near_miss", "name": t, "text": t} for t in near[:1]]
 
     async def turn(self, system: str, messages: list, tools: list[dict]) -> Turn:
         if not self.planned:
