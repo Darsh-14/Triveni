@@ -15,7 +15,7 @@ function Stepper({ status }: { status: string }) {
     <ol className="flex items-center gap-1 text-[11px]">
       {HANDOFF_STEPS.map((s, i) => (
         <li key={s} className="flex items-center gap-1">
-          <span className={`grid h-4 w-4 place-items-center rounded-full border ${i <= at ? "border-accent bg-accent text-white" : "border-line-strong text-ink-3"}`}>
+          <span className={`grid h-4 w-4 place-items-center rounded-full border ${i <= at ? "border-accent bg-accent text-on-accent" : "border-line-strong text-ink-3"}`}>
             {i < at || (i === at && s === "done") ? <Check size={10} /> : null}
           </span>
           <span className={i === at ? "font-semibold text-ink" : "text-ink-3"}>{s}</span>
@@ -106,7 +106,7 @@ export default function Approvals({ tenant, refreshKey, onOpen, onResult, onChan
               {a.status === "proposed" && (
                 <div className="mt-2 flex gap-1.5">
                   <button disabled={busy || !approver} onClick={() => decide(a.id, true)}
-                          className="btn btn-primary">Approve</button>
+                          className="btn btn-ok">Approve</button>
                   <button disabled={busy || !approver} onClick={() => decide(a.id, false)}
                           className="btn">Reject</button>
                 </div>

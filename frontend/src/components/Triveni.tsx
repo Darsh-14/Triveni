@@ -535,7 +535,7 @@ export default function Triveni() {
                      className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3 disabled:opacity-60" />
               {conversationId && <span className="font-mono text-[11px] text-ink-3">{conversationId}</span>}
               <button disabled={!agentOnline || busy || !question.trim()} aria-label="Send"
-                      className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-white hover:brightness-110 disabled:opacity-40"><Send size={14} /></button>
+                      className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-on-accent hover:brightness-110 disabled:opacity-40"><Send size={14} /></button>
             </div>
           </form>
         </section>

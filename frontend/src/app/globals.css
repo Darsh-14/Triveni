@@ -4,33 +4,41 @@
    Components use the Tailwind names (bg-panel, text-ink-3, border-line, ...); a dark theme only has to
    redefine the variables in :root. */
 :root {
-  /* dark by default, with soft green / warm yellow / orange status accents; coolors "mono neon picnic" families: dusty olive, ash grey, almond silk, one hot fuchsia neon */
+  /* Dark UI, tuned to published guidance (Material dark theme, WCAG 2.2 AA):
+     - dark grey, not black, and lighter surfaces for elevation instead of shadows
+     - off-white text, never pure white on black; every text tone >= 4.5:1 on panels
+     - desaturated accents (saturated colours vibrate on dark), 60-30-10: neutrals, panels, one accent
+     - a cool neutral that sits with the graph's sky-blue lines and green nodes
+     - semantic colours mean one thing each: green = go/approve, yellow = caution, red = stop */
   color-scheme: dark;
-  --bg: #0b0c0a;          /* near black, olive-tinted */
-  --panel: #151613;       /* raised panels */
-  --raised: #1f211c;      /* hover, inputs, nested */
-  --line: #2a2c26;
-  --line-strong: #3b3e34;
-  --ink: #f1f1ec;         /* ash grey 900 */
-  --ink-2: #c9ccc0;       /* dusty olive 800 */
-  --ink-3: #939980;       /* dusty olive 600, 6:1 on panels */
-  --accent: #ff1053;      /* hot fuchsia: focus, selection, highlighted lines */
-  --accent-ink: #ff6f98;  /* the accent as text, 6.9:1 on panels */
-  --accent-soft: rgba(255, 16, 83, 0.16);
-  --ok: #7fd1a1;
-  --ok-soft: rgba(127, 209, 161, 0.13);
-  --warn: #f2c14e;        /* almond silk 400 */
-  --warn-soft: rgba(242, 193, 78, 0.13);
-  --bad: #ff5c7a;
-  --bad-soft: rgba(255, 92, 122, 0.14);
-  --on-ink: #0b0c0a;      /* text on an ink-filled (light) button */
-  /* section colours: each part of the app has its own, used for its buttons and labels */
-  --c-fuchsia: #ff1053;
+  --bg: #101215;          /* base surface */
+  --panel: #171a1f;       /* +1 elevation */
+  --raised: #20242a;      /* +2: hover, inputs, nested */
+  --line: #2a2f37;
+  --line-strong: #3a404a;
+  --ink: #e6e8eb;         /* 14.2:1 on panels */
+  --ink-2: #c0c6cf;       /* 10.2:1 */
+  --ink-3: #8f98a6;       /* 6.0:1 */
+  --accent: #5bb8f5;      /* desaturated sky: focus, selection, primary action */
+  --accent-ink: #8fd0ff;  /* the accent as text, 10.5:1 on panels */
+  --accent-soft: rgba(91, 184, 245, 0.15);
+  --on-accent: #0b1620;   /* text on an accent fill, 8.4:1 */
+  --ok: #6fcf97;          /* 9.2:1 */
+  --ok-strong: #3fb977;   /* green fill for approve */
+  --on-ok: #0f1a14;       /* text on the green fill, 7.1:1 */
+  --ok-soft: rgba(111, 207, 151, 0.14);
+  --warn: #e8b85a;        /* 9.5:1 */
+  --warn-soft: rgba(232, 184, 90, 0.14);
+  --bad: #f2788f;         /* 6.5:1 */
+  --bad-soft: rgba(242, 120, 143, 0.14);
+  --on-ink: #101215;      /* text on an ink-filled (light) button */
+  /* section colours (desaturated): each part of the app has its own, for its buttons and labels */
+  --c-fuchsia: #f06a92;
   --c-teal: #5ec2b7;
-  --c-yellow: #f2c14e;
-  --c-green: #7fd1a1;
-  --c-orange: #ff8a5c;
-  --c-lilac: #c9a7ff;
+  --c-yellow: #e8b85a;
+  --c-green: #6fcf97;
+  --c-orange: #f2955f;
+  --c-lilac: #b9a2f5;
 }
 
 @theme inline {
@@ -50,6 +58,9 @@
   --color-on-ink: var(--on-ink);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
+  --color-ok-strong: var(--ok-strong);
+  --color-on-ok: var(--on-ok);
+  --color-on-accent: var(--on-accent);
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
   --color-bad: var(--bad);
@@ -82,8 +93,10 @@ body {
   }
   .btn:hover { background: var(--line-strong); color: var(--ink); }
   .btn:disabled { opacity: 0.5; }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover { background: #ff3f76; color: #fff; }
+  .btn-primary { background: var(--accent); color: var(--on-accent); }
+  .btn-primary:hover { background: var(--accent-ink); color: var(--on-accent); }
+  .btn-ok { background: var(--ok-strong); color: var(--on-ok); }
+  .btn-ok:hover { background: var(--ok); color: var(--on-ok); }
   .btn-sm { padding: 0.15rem 0.5rem; font-size: 0.75rem; }
   .tab { border-radius: 0.4rem; padding: 0.2rem 0.65rem; font-weight: 500; color: var(--ink-3); }
   .tab:hover { color: var(--ink); background: var(--line); }

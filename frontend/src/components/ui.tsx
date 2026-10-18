@@ -93,7 +93,7 @@ export function IconButton({ label, onClick, active, children, disabled }: {
 }) {
   return (
     <button type="button" title={label} aria-label={label} aria-pressed={active} onClick={onClick} disabled={disabled}
-            className={`grid h-8 w-8 place-items-center rounded-lg disabled:opacity-40 ${active ? "bg-accent text-white" : "bg-raised text-ink-2 hover:bg-line-strong hover:text-ink"}`}>
+            className={`grid h-8 w-8 place-items-center rounded-lg disabled:opacity-40 ${active ? "bg-accent text-on-accent" : "bg-raised text-ink-2 hover:bg-line-strong hover:text-ink"}`}>
       {children}
     </button>
   );
