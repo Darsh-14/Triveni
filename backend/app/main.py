@@ -243,34 +243,6 @@ def expand(node_id: str, tenant: str, depth: int = 1):
     return {"nodes": nodes, "edges": edges}
 
 
-EXPAND_DEPTHS = {1, 2}
-EXPAND = """
-MATCH p=(n {id: $id})-[*1..%d]-(m)
-WHERE all(r IN relationships(p) WHERE r.derived IS NULL AND r.valid_to IS NULL)
-WITH p LIMIT 300
-UNWIND relationships(p) AS r
-RETURN DISTINCT type(r), startNode(r).id, endNode(r).id
-"""
-
-
-@app.get("/api/graph/expand/{node_id}")
-def expand(node_id: str, tenant: str, depth: int = 1):
-    """A node's current fact neighbourhood, for growing the canvas from any node (derived and ended edges left out).
-    Variable-length bounds cannot be parameters, so depth is checked against an allowed set before it is written in."""
-    if depth not in EXPAND_DEPTHS:
-        raise HTTPException(400, f"depth must be one of {sorted(EXPAND_DEPTHS)}")
-    g = tenant_graph(tenant)
-    rows = g.ro_query(EXPAND % depth, {"id": node_id}).result_set
-    edges = [{"type": t, "source": a, "target": b} for t, a, b in rows]
-    ids = sorted({node_id} | {e["source"] for e in edges} | {e["target"] for e in edges})
-    found = g.ro_query(NODES, {"ids": ids}).result_set
-    if not found:
-        raise HTTPException(404, f"no node {node_id}")
-    nodes = [{"id": i, "label": label, "name": name, "tier": tier, "kind": kind, "status": status}
-             for i, label, name, tier, kind, status in found]
-    return {"nodes": nodes, "edges": edges}
-
-
 @app.get("/api/people")
 def people(tenant: str):
     return [{"id": i, "name": n, "role": r} for i, n, r in tenant_graph(tenant).ro_query(PEOPLE).result_set]
