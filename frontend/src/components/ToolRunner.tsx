@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import type { ToolInfo } from "@/lib/api";
-import { TrackTags } from "./ui";
 
 /** Form generated from a tool's JSON schema: run any read-only graph tool directly, no model involved. */
 export default function ToolRunner({ tools, onRun, busy, initial }: {
@@ -31,7 +30,6 @@ export default function ToolRunner({ tools, onRun, busy, initial }: {
                 className="flex-1 rounded border border-line bg-panel px-2 py-1.5 font-mono text-sm text-ink">
           {readTools.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
         </select>
-        <TrackTags tracks={tool.tracks} />
       </div>
       <div className="grid grid-cols-2 gap-2">
         {Object.entries(props).map(([key, p]) => (

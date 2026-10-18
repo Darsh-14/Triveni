@@ -130,7 +130,7 @@ async def _run_with(provider, session, tools, question, tenant, system, history,
         result._evidence |= evidence_ids(json.dumps(sc, default=str))
         result._evidence_text.append(json.dumps({k: sc.get(k) for k in ("explanation", "data")}, default=str))
     if prefetched and isinstance(provider, RulesProvider):  # the planner already ran these; answer from them
-        result.answer = "Rules mode (no model available), straight from the graph tools:\n- " + "\n- ".join(
+        result.answer = "- " + "\n- ".join(  # the UI marks rules mode ("no model")
             s.explanation for s, _ in prefetched if s.explanation)
         result.model = "rules"
         return result
@@ -293,7 +293,7 @@ def compose_answer(steps: list[Step]) -> str:
     if not lines:
         return ("No graph evidence was gathered for this question, so no answer is given. Name a service, person, "
                 "team, incident or decision from this graph, by name or id.")
-    return "From the graph tools only:\n- " + "\n- ".join(dict.fromkeys(lines))
+    return "- " + "\n- ".join(dict.fromkeys(lines))  # the UI explains the rejected draft above it
 
 
 def _reason(exc: Exception) -> str:

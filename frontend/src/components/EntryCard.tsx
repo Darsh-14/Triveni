@@ -7,7 +7,7 @@ import { docKindOfId, ID_PATTERN } from "@/lib/entities";
 import { stripEmoji } from "@/lib/text";
 import Callouts from "./Callouts";
 import StepTimeline from "./StepTimeline";
-import { Chip, EntityChip, TrackTags, type Tone } from "./ui";
+import { Chip, EntityChip, type Tone } from "./ui";
 
 export interface Entry {
   id: string;
@@ -81,10 +81,11 @@ const VERDICT: Record<Verification["verdict"], { word: string; tone: Tone; Icon:
 const TONE_TEXT: Record<Tone, string> = { ok: "text-ok", warn: "text-warn", bad: "text-bad", info: "text-accent-ink", muted: "text-ink-3" };
 
 function Verdict({ v }: { v: Verification }) {
+  if (v.verdict === "no_citations") return null; // nothing was claimed, so there is nothing to report
   const { word, tone, Icon } = VERDICT[v.verdict];
   return (
     <span className={`inline-flex items-center gap-1 font-medium ${TONE_TEXT[tone]}`}>
-      <Icon size={13} aria-hidden />{word}{v.verdict !== "no_citations" && <span className="font-mono">{v.grounded.length}/{v.cited}</span>}
+      <Icon size={13} aria-hidden />{word}<span className="font-mono">{v.grounded.length}/{v.cited}</span>
     </span>
   );
 }
@@ -213,7 +214,6 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
   const [stepsOpen, setStepsOpen] = useState<boolean | null>(null); // null: open by default for short traces
   const showSteps = stepsOpen ?? entry.steps.length <= 6;
   const sources = entrySources(entry);
-  const tracks = entryTracks(entry);
 
   return (
     <article aria-current={active || undefined} className={`border-b border-line px-5 py-5 ${active ? "bg-panel" : ""}`}>
@@ -241,7 +241,6 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
               .filter(Boolean).join("; ")}>{(entry.ms / 1000).toFixed(1)} s</span>
           )}
           {entry.model === "rules" && <span className="font-mono" title="No model was reachable: tools were chosen by deterministic rules">no model</span>}
-          <span className="ml-auto"><TrackTags tracks={tracks} /></span>
         </div>
       )}
 

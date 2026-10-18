@@ -397,7 +397,7 @@ class RulesProvider:
                 return Turn(text="Rules mode: tools chosen by deterministic rules (no model available)"
                                  + (f"; entities found in the graph: {named}." if named else "."), calls=calls,
                             assistant_message={"role": "assistant", "content": "", "rules_calls": plan}, model="rules")
-            return Turn(text="Rules mode (no model available): the question names no service, person, team, incident or "
+            return Turn(text="The question names no service, person, team, incident or "
                              "decision in this graph, so nothing was looked up. Name one, by name or id.", model="rules")
         explanations = []
         for m in messages:
@@ -406,7 +406,7 @@ class RulesProvider:
                     explanations.append(json.loads(m["content"]).get("explanation", ""))
                 except (json.JSONDecodeError, AttributeError):
                     explanations.append(m["content"])
-        answer = "Rules mode (no model available), straight from the graph tools:\n- " + "\n- ".join(e for e in explanations if e)
+        answer = "- " + "\n- ".join(e for e in explanations if e)  # the UI marks rules mode ("no model")
         return Turn(text=answer, model="rules")
 
     def tool_results(self, results: list[tuple[Call, str, bool]]) -> list[dict]:

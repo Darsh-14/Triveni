@@ -431,7 +431,6 @@ export default function Triveni() {
                   className="rounded border border-line bg-panel px-2 py-1 text-[13px] font-medium text-ink">
             {(tenants.length ? tenants : [tenant]).map((t) => <option key={t}>{t}</option>)}
           </select>
-          <span className="font-mono">tenant_{tenant}</span>
         </label>
         <button onClick={() => setPaletteOpen(true)}
                 className="ml-4 flex w-64 items-center gap-2 rounded border border-line bg-raised px-2.5 py-1 text-[13px] text-ink-3 hover:border-line-strong">

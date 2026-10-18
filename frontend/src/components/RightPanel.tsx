@@ -6,7 +6,7 @@ import { api, type Doc, type NodeDetail, type Step } from "@/lib/api";
 import { ID_PATTERN } from "@/lib/entities";
 import type { AgentResult } from "@/lib/api";
 import Approvals from "./Coordination";
-import { EntityChip, ShapeSwatch, TrackTags } from "./ui";
+import { EntityChip, ShapeSwatch } from "./ui";
 
 export type PanelTab = "node" | "cypher" | "source" | "approvals";
 export interface PanelState { tab: PanelTab; nodeId?: string; step?: Step; docId?: string }
@@ -198,7 +198,6 @@ function CypherTab({ step }: { step: Step }) {
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <span className="font-mono text-sm font-semibold text-ink">{step.tool}</span>
-        <TrackTags tracks={step.tracks} />
         <span className="ml-auto"><CopyButton text={step.cypher} /></span>
       </div>
       <Cypher text={step.cypher} />

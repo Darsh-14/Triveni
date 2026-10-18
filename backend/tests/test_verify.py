@@ -48,7 +48,7 @@ def test_agent_answer_is_checked_against_its_own_tool_results(loaded):
     assert set(v["grounded"]) == {"per:arjun-mehta", "team:payments", "doc:oncall-schedule"}
     assert v["unknown"] == ["per:ghost-engineer"] and v["verdict"] == "unverified"
     # guard: an invented name is never shown as the answer; the answer is rebuilt from the tool results only
-    assert "ghost" not in r.answer and r.answer.startswith("From the graph tools only")
+    assert "ghost" not in r.answer and r.answer.startswith("- ")  # only the tool explanations
     assert r.guard["draft"].endswith("per:ghost-engineer.") and "not in the graph" in r.guard["reason"]
     assert r.verification["verdict"] == "verified"
     assert not {"_evidence", "_context", "_evidence_text"} & set(r.to_dict())

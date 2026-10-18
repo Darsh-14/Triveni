@@ -190,7 +190,7 @@ def test_all_models_down_uses_rules(loaded):
                                     providers=[_Down(), RulesProvider()]))
     assert r.model == "rules" and r.fallbacks == ["groq: down"]
     assert [s.tool for s in r.steps] == ["blast_radius", "similar_incidents", "recall"] and all(s.via == "mcp" for s in r.steps)
-    assert r.answer.startswith("Rules mode") and "Page Arjun Mehta" in r.answer
+    assert r.answer.startswith("- ") and "Page Arjun Mehta" in r.answer
 
 
 def test_request_too_large_falls_back(loaded):
