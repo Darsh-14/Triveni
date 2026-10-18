@@ -212,7 +212,6 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
 } & Handlers) {
   const [stepsOpen, setStepsOpen] = useState<boolean | null>(null); // null: open by default for short traces
   const showSteps = stepsOpen ?? entry.steps.length <= 6;
-  const [showDetails, setShowDetails] = useState(false);
   const sources = entrySources(entry);
   const tracks = entryTracks(entry);
 
@@ -272,23 +271,13 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
         </div>
       )}
 
-      {!entry.pending && (entry.data !== undefined || entry.conversationId || entry.steps.some((s) => s.data)) && (
-        <div className="mt-3">
-          <button onClick={() => setShowDetails((v) => !v)} aria-expanded={showDetails}
-                  className="btn btn-sm">
-            {showDetails ? <ChevronDown size={12} /> : <ChevronRight size={12} />}Details
-          </button>
-          {showDetails && (
-            <div className="mt-1.5 space-y-1.5">
-              <div className="flex flex-wrap gap-1">
-                {entry.conversationId && <EntityChip id={entry.conversationId} onOpen={h.onOpen} />}
-                {entry.episode && <EntityChip id={entry.episode} onOpen={h.onOpen} />}
-              </div>
-              <pre className="max-h-64 overflow-auto rounded bg-raised p-2 font-mono text-[11px] text-ink-2">
-                {JSON.stringify(entry.data ?? entry.steps.map((s) => ({ tool: s.tool, data: s.data })), null, 2)}
-              </pre>
-            </div>
-          )}
+      {/* Where this answer was written to memory (Track 02). The tool data itself is already shown as the callout
+          fields above and in the Cypher panel, so no raw JSON here. */}
+      {!entry.pending && (entry.conversationId || entry.episode) && (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-ink-3">
+          <span>Saved to memory</span>
+          {entry.conversationId && <EntityChip id={entry.conversationId} onOpen={h.onOpen} />}
+          {entry.episode && <EntityChip id={entry.episode} onOpen={h.onOpen} />}
         </div>
       )}
     </article>
