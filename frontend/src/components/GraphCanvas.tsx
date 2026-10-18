@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Core, ElementDefinition, LayoutOptions, NodeSingular } from "cytoscape";
-import { Boxes, ChevronDown, ChevronsDownUp, ChevronUp, Eye, EyeOff, Maximize, Network, Orbit, Search, Share2, SunDim, ZoomIn, ZoomOut } from "lucide-react";
+import { Boxes, ChevronDown, ChevronsDownUp, ChevronUp, X, Eye, EyeOff, Maximize, Network, Orbit, Search, Share2, SunDim, ZoomIn, ZoomOut } from "lucide-react";
 import type { GraphEdge, GraphNode } from "@/lib/api";
 import { styleOf } from "@/lib/entities";
 import { IconButton, ShapeSwatch } from "./ui";
@@ -53,6 +53,13 @@ const STYLE = [
   { selector: "edge.asof", style: { "line-style": "solid", "line-color": "#8c939b", "target-arrow-color": "#8c939b", color: "#5c636c", label: "data(type)" } },
   { selector: "edge.quiet", style: { label: "" } },
   { selector: "edge.quiet.lit", style: { label: "data(label)" } },
+  // following a line: hovering a node lights its lines; hovering or clicking a line lights it and names it
+  { selector: "edge.flow", style: { width: 2.5, "line-color": "#24548f", "target-arrow-color": "#24548f", "z-index": 90 } },
+  { selector: "edge.hot", style: { width: 3, "line-color": "#24548f", "target-arrow-color": "#24548f", "arrow-scale": 1,
+      label: "data(label)", color: "#16191d", "z-index": 99 } },
+  { selector: "edge.pinned", style: { width: 3.5, "line-color": "#24548f", "target-arrow-color": "#24548f", "arrow-scale": 1.1,
+      label: "data(label)", color: "#16191d", "font-size": 11, "z-index": 100 } },
+  { selector: "node.end", style: { "border-width": 3, "border-color": "#24548f", "font-weight": 600, "z-index": 100 } },
   { selector: ".faded", style: { opacity: 0.12, "text-opacity": 0 } },
   { selector: ".off", style: { display: "none" } },
 ];
@@ -168,6 +175,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
   const cy = useRef<Core | null>(null);
   const [ready, setReady] = useState(false);
   const [dim, setDim] = useState(false);
+  const [pinned, setPinned] = useState<{ id: string; type: string; from: string; to: string } | null>(null);
   const [hiddenLabels, setHiddenLabels] = useState<Set<string>>(new Set());
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
@@ -190,15 +198,22 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
       try { cytoscape.use(fcose); } catch { /* already registered (fast refresh) */ }
       cy.current = cytoscape({ container: container.current, style: STYLE as never, minZoom: 0.15, maxZoom: 2.5 });
       cy.current.on("tap", "node", (e) => { if (!e.target.id().startsWith("group:")) handlers.current.onSelect(e.target.id()); });
-      cy.current.on("tap", (e) => { if (e.target === cy.current) handlers.current.onSelect(null); });
+      cy.current.on("tap", (e) => { if (e.target === cy.current) { handlers.current.onSelect(null); setPinned(null); } });
+      cy.current.on("tap", "edge", (e) => {
+        const ed = e.target;
+        setPinned((cur) => (cur?.id === ed.id() ? null : {
+          id: ed.id(), type: ed.data("type"), from: ed.source().data("name"), to: ed.target().data("name") }));
+      });
       cy.current.on("mouseover", "node", (e) => {
         if (e.target.id().startsWith("group:")) return;
         const p = e.target.renderedPosition();
         setTip({ x: p.x, y: p.y, name: e.target.data("name"), label: e.target.data("kind"), id: e.target.id() });
       });
       cy.current.on("mouseout", "node", () => setTip(null));
-      cy.current.on("mouseover", "edge", (e) => e.target.addClass("lit"));
-      cy.current.on("mouseout", "edge", (e) => e.target.removeClass("lit"));
+      cy.current.on("mouseover", "node", (e) => e.target.connectedEdges().addClass("flow"));
+      cy.current.on("mouseout", "node", (e) => e.target.connectedEdges().removeClass("flow"));
+      cy.current.on("mouseover", "edge", (e) => e.target.addClass("hot"));
+      cy.current.on("mouseout", "edge", (e) => e.target.removeClass("hot"));
       cy.current.on("dbltap", "node", (e) => {
         if (e.target.id().startsWith("group:")) return;
         if (e.target.data("kind") !== "Team" || !e.target.isParent() && !e.target.hasClass("collapsed")) {
@@ -222,6 +237,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest("input, textarea, select") || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "Escape") setPinned(null);
       if (e.key === "f") fitCapped(cy.current);
       if (e.key === "d") setDim((v) => !v);
     };
@@ -230,6 +246,8 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
   }, []);
 
   const overview = useMemo(() => !roots.length && edges.every((e) => e.type === "DEPENDS_ON" || e.type === "OWNS"), [roots, edges]);
+
+  useEffect(() => { setPinned(null); }, [nodes, edges]); // eslint-disable-line react-hooks/set-state-in-effect
 
   // team grouping applies to the overview only, and not while Team is filtered out
   const groupedNow = overview && grouped && !hiddenLabels.has("Team");
@@ -284,7 +302,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
     const c = cy.current;
     if (!c || !ready) return;
     c.batch(() => {
-      c.elements().removeClass("faded off hover asof");
+      c.elements().removeClass("faded off hover asof pinned end");
       if (compare !== "both") {
         // ended edges and the current edges that replaced them (same type, same target)
         const ended = c.edges("[superseded = 1]");
@@ -300,6 +318,15 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
       }
       c.nodes().filter((n) => hiddenLabels.has(n.data("kind"))).addClass("off");
       c.edges().filter((e) => hiddenTypes.has(e.data("type"))).addClass("off");
+      if (pinned) {
+        const line = c.getElementById(pinned.id);
+        if (line.nonempty()) {
+          const ends = line.connectedNodes();
+          c.elements().not(line.union(ends).union(ends.ancestors())).addClass("faded");
+          line.addClass("pinned");
+          ends.addClass("end");
+        }
+      }
       if (hover) c.getElementById(hover).addClass("hover");
       c.nodes().unselect();
       c.edges().removeClass("lit");
@@ -308,7 +335,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
         if (sel.connectedEdges().length <= 10) sel.connectedEdges().addClass("lit"); // a hub's labels would pile up again
       }
     });
-  }, [focus, dim, selected, hiddenLabels, hiddenTypes, hover, ready, nodes, edges, compare]);
+  }, [focus, dim, selected, hiddenLabels, hiddenTypes, hover, ready, nodes, edges, compare, pinned]);
 
   const labelCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -355,6 +382,16 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find node" aria-label="Find node"
                className="w-36 bg-transparent text-xs text-ink outline-none placeholder:text-ink-3 focus-visible:outline-none" />
       </form>
+
+      {pinned && (
+        <div className="absolute left-3 top-14 z-10 flex max-w-[calc(100%-5rem)] items-center gap-2 rounded border border-accent bg-panel px-2 py-1 text-xs">
+          <span className="truncate text-ink">{pinned.from}</span>
+          <span className="shrink-0 font-mono text-[11px] text-accent">{pinned.type} →</span>
+          <span className="truncate text-ink">{pinned.to}</span>
+          <button onClick={() => setPinned(null)} aria-label="Clear highlighted line" title="Clear (Esc)"
+                  className="ml-1 shrink-0 text-ink-3 hover:text-ink"><X size={13} /></button>
+        </div>
+      )}
 
       {/* labels and relationships (bottom-left) */}
       {(labelCounts.length > 0) && (
