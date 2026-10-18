@@ -18,7 +18,7 @@ def get_db() -> FalkorDB:
         ssl=s.falkordb_ssl,
         # fail fast: an unreachable database must surface as an error in seconds, not hang every request
         socket_connect_timeout=float(os.getenv("TRIVENI_FALKORDB_CONNECT_TIMEOUT", "5")),
-        socket_timeout=float(os.getenv("TRIVENI_FALKORDB_TIMEOUT", "20")),
+        socket_timeout=float(os.getenv("TRIVENI_FALKORDB_TIMEOUT", "120")),  # seeding a whole graph is one long write
     )
 
 

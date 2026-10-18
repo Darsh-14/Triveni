@@ -43,13 +43,14 @@ def test_reset_gives_a_known_inbox_and_the_gate_decides(graph):
 
 def test_demo_actions_can_be_approved_or_rejected_but_blocked_ones_cannot(graph):
     actions = demo_actions.reset(T)
-    pending = [a for a in actions if a["status"] == "proposed"]
-    done = decide(graph, pending[0]["id"], "per:priya-nair", approve=True)
+    pending = {a["target"]: a for a in actions if a["status"] == "proposed"}  # same ts: pick by target, not order
+    done = decide(graph, pending["svc:orders-api"]["id"], "per:priya-nair", approve=True)
     assert done["status"] == "executed" and done["outbox"]
-    assert decide(graph, pending[1]["id"], "per:priya-nair", approve=False)["status"] == "rejected"
-    orphan = next(a for a in pending if a["target"] == "svc:pdf-renderer-v1")
-    assert "unowned" in decide(graph, orphan["id"], "per:priya-nair", approve=True)["delivered_to"]  # no "None"
+    rejected = pending["svc:payments-api"]["id"]
+    assert decide(graph, rejected, "per:priya-nair", approve=False)["status"] == "rejected"
+    orphan = pending["svc:pdf-renderer-v1"]["id"]
+    assert "unowned" in decide(graph, orphan, "per:priya-nair", approve=True)["delivered_to"]  # never "None"
     with pytest.raises(ValueError):
         decide(graph, next(a["id"] for a in actions if a["status"] == "blocked"), "per:priya-nair", approve=True)
     statuses = {a["id"]: a["status"] for a in list_actions(graph)}
-    assert statuses[pending[1]["id"]] == "rejected"
+    assert statuses[rejected] == "rejected"
