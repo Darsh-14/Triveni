@@ -56,6 +56,7 @@ README.md
 docker compose up -d falkordb
 python -m backend.scripts.seed --tenant acme --seed 42
 python -m backend.scripts.demo_reset                         # reseed acme+beta, replay cached ingestion (no model)
+python -m backend.scripts.demo_actions --tenant acme        # reset only the approvals inbox (5 pending, 3 blocked)
 python -m backend.app.agents.remediation --tenant acme      # remediation agent: claim next handoff
 uvicorn backend.app.main:app --reload
 python -m backend.app.mcp_server --tenant acme          # MCP server (stdio)

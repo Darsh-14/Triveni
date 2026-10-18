@@ -5,12 +5,13 @@
 1. Reseed acme (seed 42) and beta (seed 7): drops every episode, handoff, action and conversation.
 2. Re-ingest the base documents in data/raw/*.md from the committed extraction cache (no model call).
    data/raw/live/ (the Scenario 7 billing-batch move) is left out so it can be ingested live.
+3. Fill the approvals inbox with the demo actions (backend/scripts/demo_actions.py).
 """
 import glob
 import os
 
 from backend.app.ingest.pipeline import ingest
-from backend.scripts import seed
+from backend.scripts import demo_actions, seed
 
 
 def main() -> None:
@@ -23,6 +24,7 @@ def main() -> None:
         r = ingest("acme", path)
         changed = [f["fact"] for f in r["facts"] if f["action"] != "unchanged"]
         print(f"ingested {r['document']} ({r['extracted_by']}): {len(changed)} change(s)")
+    demo_actions.reset("acme")  # a known approvals inbox: 5 to approve or reject, 3 blocked by current decisions
     print("ready: billing-batch is still owned by Ledger; ingest data/raw/live/chat-billing-move.md during the demo")
 
 
