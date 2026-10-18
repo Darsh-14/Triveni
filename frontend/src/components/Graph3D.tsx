@@ -40,7 +40,7 @@ const PAGE = "#0f100e";
 const LINK = "#5f6450";
 const LINK_FAINT = "#23251f";
 const OWNS_LINK = "#2f3228";
-const OLD = "#da9384";
+const OLD = "#f2c14e";
 const LABEL_LIMIT = 30; // above this many nodes, only some labels are drawn
 
 const idOf = (end: string | N) => (typeof end === "string" ? end : end.id);

@@ -5,21 +5,21 @@ export type Shape = "round-rectangle" | "ellipse" | "hexagon" | "tag" | "triangl
 // From the "mono neon picnic" families only: olive and ash for systems and teams, almond for people and decisions,
 // fuchsia for incidents (the one neon thing) and the agent's memory. The shape carries the type too.
 export const LABEL_STYLE: Record<string, { colour: string; shape: Shape }> = {
-  Service: { colour: "#aeb3a0", shape: "round-rectangle" },   // dusty olive
-  Team: { colour: "#e4e6df", shape: "hexagon" },              // dusty olive 200
-  Person: { colour: "#da9384", shape: "ellipse" },            // almond silk 300
-  Deployment: { colour: "#999b7a", shape: "tag" },            // ash grey 300
+  Service: { colour: "#b9c4a0", shape: "round-rectangle" },   // dusty olive
+  Team: { colour: "#e8e9e0", shape: "hexagon" },              // dusty olive 200
+  Person: { colour: "#ff8a5c", shape: "ellipse" },            // almond silk 300
+  Deployment: { colour: "#7fd1a1", shape: "tag" },            // ash grey 300
   Incident: { colour: "#ff1053", shape: "triangle" },         // hot fuchsia
-  Decision: { colour: "#c65741", shape: "diamond" },          // almond silk 200
-  Document: { colour: "#999999", shape: "rectangle" },        // black 700
+  Decision: { colour: "#f2c14e", shape: "diamond" },          // almond silk 200
+  Document: { colour: "#9aa0a6", shape: "rectangle" },        // black 700
   Episode: { colour: "#ff6f98", shape: "octagon" },           // hot fuchsia 200
-  Lesson: { colour: "#efd0ca", shape: "octagon" },            // almond silk 100
+  Lesson: { colour: "#ffb4c8", shape: "octagon" },            // almond silk 100
   Procedure: { colour: "#ff3f76", shape: "octagon" },         // hot fuchsia 300
-  Agent: { colour: "#cccccc", shape: "octagon" },             // black 600
-  Handoff: { colour: "#939980", shape: "round-tag" },         // dusty olive 300
+  Agent: { colour: "#d0d0d0", shape: "octagon" },             // black 600
+  Handoff: { colour: "#5ec2b7", shape: "round-tag" },         // dusty olive 300
   Action: { colour: "#ff9fba", shape: "round-tag" },          // hot fuchsia 400
   Conversation: { colour: "#c6c7b5", shape: "octagon" },      // ash grey 200
-  Message: { colour: "#757759", shape: "octagon" },           // ash grey 300
+  Message: { colour: "#8f927c", shape: "octagon" },           // ash grey 300
 };
 
 export const styleOf = (label: string) => LABEL_STYLE[label] ?? { colour: "#777777", shape: "ellipse" as Shape };

@@ -4,7 +4,7 @@
    Components use the Tailwind names (bg-panel, text-ink-3, border-line, ...); a dark theme only has to
    redefine the variables in :root. */
 :root {
-  /* dark by default; coolors "mono neon picnic" families: dusty olive, ash grey, almond silk, one hot fuchsia neon */
+  /* dark by default, with soft green / warm yellow / orange status accents; coolors "mono neon picnic" families: dusty olive, ash grey, almond silk, one hot fuchsia neon */
   color-scheme: dark;
   --bg: #0b0c0a;          /* near black, olive-tinted */
   --panel: #151613;       /* raised panels */
@@ -16,13 +16,13 @@
   --ink-3: #939980;       /* dusty olive 600, 6:1 on panels */
   --accent: #ff1053;      /* hot fuchsia: focus, selection, highlighted lines */
   --accent-ink: #ff6f98;  /* the accent as text, 6.9:1 on panels */
-  --accent-soft: #3a0a18;
-  --ok: #aeb3a0;
-  --ok-soft: #23261e;
-  --warn: #da9384;        /* almond silk 400 */
-  --warn-soft: #2f1b16;
-  --bad: #ff6f98;
-  --bad-soft: #3a0a18;
+  --accent-soft: rgba(255, 16, 83, 0.16);
+  --ok: #7fd1a1;
+  --ok-soft: rgba(127, 209, 161, 0.13);
+  --warn: #f2c14e;        /* almond silk 400 */
+  --warn-soft: rgba(242, 193, 78, 0.13);
+  --bad: #ff5c7a;
+  --bad-soft: rgba(255, 92, 122, 0.14);
   --on-ink: #0b0c0a;      /* text on an ink-filled (light) button */
 }
 
