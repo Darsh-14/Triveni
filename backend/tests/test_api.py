@@ -97,3 +97,15 @@ def test_expand_neighbourhood(client):
     assert ids < {n["id"] for n in two["nodes"]}  # depth 2 reaches strictly more
     assert client.get("/api/graph/expand/svc:payments-api", params={"tenant": "test_acme", "depth": 3}).status_code == 400
     assert client.get("/api/graph/expand/svc:none", params={"tenant": "test_acme"}).status_code == 404
+
+
+def test_expand_neighbourhood(client):
+    one = client.get("/api/graph/expand/svc:payments-api", params={"tenant": "test_acme", "depth": 1}).json()
+    ids = {n["id"] for n in one["nodes"]}
+    assert {"svc:payments-api", "svc:orders-api", "per:arjun-mehta"} <= ids
+    assert {"type": "DEPENDS_ON", "source": "svc:orders-api", "target": "svc:payments-api"} in one["edges"]
+    assert not any(e["type"] in ("KNOWS", "KNOWN_BY", "RESPONSIBLE_FOR") for e in one["edges"])  # derived edges hidden
+    two = client.get("/api/graph/expand/svc:payments-api", params={"tenant": "test_acme", "depth": 2}).json()
+    assert ids < {n["id"] for n in two["nodes"]}  # depth 2 reaches strictly more
+    assert client.get("/api/graph/expand/svc:payments-api", params={"tenant": "test_acme", "depth": 3}).status_code == 400
+    assert client.get("/api/graph/expand/svc:none", params={"tenant": "test_acme"}).status_code == 404

@@ -487,3 +487,13 @@ LIMIT 200
 ```cypher
 MATCH (p:Person) RETURN p.id, p.name, p.role ORDER BY p.name
 ```
+
+### Expand a node's neighbourhood on the canvas **[01] [03]**
+`backend/app/main.py` → `GET /api/graph/expand/{id}?depth=1|2`. Current fact edges only (derived projections and ended edges left out), capped at 300 paths. The depth is a variable-length bound, which cannot be a parameter, so it is checked against `{1, 2}` before it is written into the query.
+```cypher
+MATCH p=(n {id: $id})-[*1..<depth>]-(m)
+WHERE all(r IN relationships(p) WHERE r.derived IS NULL AND r.valid_to IS NULL)
+WITH p LIMIT 300
+UNWIND relationships(p) AS r
+RETURN DISTINCT type(r), startNode(r).id, endNode(r).id
+```
