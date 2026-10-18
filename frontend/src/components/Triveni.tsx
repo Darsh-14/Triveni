@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LayoutGrid, MessagesSquare, Plus, Repeat, Send, ShieldCheck, Wrench, X } from "lucide-react";
+import { LayoutGrid, Maximize, MessagesSquare, Play, Plus, Repeat, Search, Send, ShieldCheck, Table2, Wrench, X } from "lucide-react";
 import {
   api, parseEdge, toolAsStep, type AgentResult, type ConversationInfo, type GraphEdge, type GraphNode, type Health,
-  type Guard, type Step, type ToolInfo,
+  type Guard, type Person, type Step, type ToolInfo,
 } from "@/lib/api";
 import { SCENARIOS, TRACK_COLUMNS, type Scenario } from "@/lib/scenarios";
 import EntryCard, { type Entry } from "./EntryCard";
@@ -12,7 +12,8 @@ import GraphCanvas, { edgeKey, type LayoutName } from "./GraphCanvas";
 import GraphTable from "./GraphTable";
 import RightPanel, { type PanelState, type PanelTab } from "./RightPanel";
 import ToolRunner from "./ToolRunner";
-import { Chip } from "./ui";
+import CommandPalette, { type PaletteItem } from "./CommandPalette";
+import { Chip, ShapeSwatch } from "./ui";
 
 /** The rejected-draft record, if the proof check replaced the model's answer (empty object otherwise). */
 const guardOf = (r: AgentResult) => (r.guard && "reason" in r.guard ? (r.guard as Guard) : undefined);
@@ -81,6 +82,11 @@ export default function Triveni() {
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationInfo[]>([]);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [catalog, setCatalog] = useState<GraphNode[]>([]); // services and teams, for node search in the palette
+  const [people, setPeople] = useState<Person[]>([]);
+  const [toolChoice, setToolChoice] = useState<string | undefined>(undefined);
+  const [modKey, setModKey] = useState("Ctrl");
   const composer = useRef<HTMLInputElement>(null);
   const threadEnd = useRef<HTMLDivElement>(null);
   const aborts = useRef(new Map<string, AbortController>());
@@ -99,6 +105,7 @@ export default function Triveni() {
     try {
       const o = await api.overview(t);
       setGraph({ nodes: o.nodes, edges: o.edges, roots: [], title: "Overview", entryId: null });
+      setCatalog(o.nodes);
       setLayout("force"); setFocusStep(null); setSelected(null);
     } catch (e) {
       setError((e as Error).message);
@@ -109,7 +116,7 @@ export default function Triveni() {
     if (error) return;
     let live = true; // ignore a late response after the tenant changed
     api.overview(tenant)
-      .then((o) => live && setGraph({ nodes: o.nodes, edges: o.edges, roots: [], title: "Overview", entryId: null }))
+      .then((o) => { if (live) { setGraph({ nodes: o.nodes, edges: o.edges, roots: [], title: "Overview", entryId: null }); setCatalog(o.nodes); } })
       .catch((e) => live && setError(e.message));
     return () => { live = false; };
   }, [tenant, error]);
@@ -129,6 +136,15 @@ export default function Triveni() {
     api.actions(tenant).then((a) => live && setPendingApprovals(a.filter((x) => x.status === "proposed").length)).catch(() => {});
     return () => { live = false; };
   }, [tenant, coordKey]);
+
+  useEffect(() => {
+    let live = true;
+    api.people(tenant).then((p) => live && setPeople(p)).catch(() => live && setPeople([]));
+    return () => { live = false; };
+  }, [tenant]);
+
+  // shortcut label for the search button (read after mount: the server render cannot know the platform)
+  useEffect(() => { setModKey(/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl"); }, []); // eslint-disable-line react-hooks/set-state-in-effect
 
   useEffect(() => { threadEnd.current?.scrollIntoView({ block: "end" }); }, [entries.length]);
 
@@ -290,6 +306,8 @@ export default function Triveni() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = (e.target as HTMLElement).closest("input, textarea, select");
+      if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setPaletteOpen((o) => !o); return; }
+      if (paletteOpen) return; // the palette handles its own keys
       if (e.key === "Escape") { if (flyout) setFlyout(null); else setPanel(null); return; }
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "/") { e.preventDefault(); composer.current?.focus(); return; }
@@ -301,6 +319,34 @@ export default function Triveni() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  const openTool = (name?: string) => { setToolChoice(name); setFlyout("tools"); };
+
+  const paletteItems = (): PaletteItem[] => {
+    const nodes = new Map<string, { id: string; name: string; label: string }>();
+    [...graph.nodes, ...catalog].forEach((n) => nodes.set(n.id, n));
+    people.forEach((p) => nodes.set(p.id, { id: p.id, name: p.name, label: "Person" }));
+    const shown = new Set(graph.nodes.map((n) => n.id));
+    return [
+      ...SCENARIOS.map((sc) => ({ id: `scenario:${sc.n}`, group: "Scenarios", label: sc.label, hint: `#${sc.n}`,
+                                 keywords: sc.question, icon: <Play size={14} />, run: () => { runScenario(sc); } })),
+      { id: "action:overview", group: "Actions", label: "Overview", icon: <LayoutGrid size={14} />, run: () => { showOverview(tenant); } },
+      { id: "action:table", group: "Actions", label: view === "graph" ? "Table view" : "Graph view", icon: <Table2 size={14} />,
+        run: () => setView(view === "graph" ? "table" : "graph") },
+      { id: "action:approvals", group: "Actions", label: "Approvals", hint: pendingApprovals ? String(pendingApprovals) : undefined,
+        icon: <ShieldCheck size={14} />, run: openApprovals },
+      { id: "action:new", group: "Actions", label: "New conversation", icon: <Plus size={14} />, run: () => { openConversation(null); } },
+      { id: "action:fit", group: "Actions", label: "Fit graph", hint: "f", icon: <Maximize size={14} />,
+        run: () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "f" })) },
+      ...conversations.map((c) => ({ id: `conv:${c.id}`, group: "Conversations", label: c.title, hint: c.id,
+                                     icon: <MessagesSquare size={14} />, run: () => { openConversation(c.id); } })),
+      ...tools.filter((t) => t.read_only).map((t) => ({ id: `tool:${t.name}`, group: "Tools", label: t.name, keywords: t.description,
+                                                       icon: <Wrench size={14} />, run: () => openTool(t.name) })),
+      ...[...nodes.values()].map((n) => ({ id: `node:${n.id}`, group: "Nodes", label: n.name, hint: n.id, keywords: n.label,
+                                           icon: <ShapeSwatch label={n.label} />,
+                                           run: () => (shown.has(n.id) ? selectNode(n.id) : openId(n.id)) })),
+    ];
+  };
 
   const submit = () => {
     const q = question.trim();
@@ -340,6 +386,11 @@ export default function Triveni() {
           </select>
           <span className="font-mono">tenant_{tenant}</span>
         </label>
+        <button onClick={() => setPaletteOpen(true)}
+                className="ml-4 flex w-64 items-center gap-2 rounded-md border border-line bg-raised px-2.5 py-1 text-[13px] text-ink-3 hover:border-line-strong">
+          <Search size={14} aria-hidden /><span className="flex-1 text-left">Search</span>
+          <kbd className="rounded border border-line bg-panel px-1 font-mono text-[11px]">{modKey} K</kbd>
+        </button>
         <div className="ml-auto flex items-center gap-2 text-xs">
           {health?.demo_replay && <Chip tone="warn"><Repeat size={12} aria-hidden />Replay</Chip>}
         </div>
@@ -351,6 +402,8 @@ export default function Triveni() {
           <button onClick={() => setError(null)} aria-label="Dismiss"><X size={14} /></button>
         </div>
       )}
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteOpen ? paletteItems() : []} />
 
       <main className="flex min-h-0 flex-1">
         {/* icon sidebar */}
@@ -382,7 +435,8 @@ export default function Triveni() {
                 <button onClick={() => setFlyout(null)} aria-label="Close" className="ml-auto rounded p-1 text-ink-3 hover:bg-raised"><X size={14} /></button>
               </div>
               {flyout === "scenarios" && scenarioGrid(true)}
-              {flyout === "tools" && <ToolRunner tools={tools} busy={busy} onRun={(n, a) => { setFlyout(null); runTool(n, a, undefined, tenant); }} />}
+              {flyout === "tools" && <ToolRunner key={toolChoice ?? "default"} initial={toolChoice} tools={tools} busy={busy}
+                                              onRun={(n, a) => { setFlyout(null); runTool(n, a, undefined, tenant); }} />}
               {flyout === "conversations" && (
                 <div className="space-y-1">
                   <button onClick={() => openConversation(null)}

@@ -244,7 +244,7 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
 
       {entry.guard && <GuardNotice guard={entry.guard} />}
 
-      {showSteps && (
+      {showSteps && entry.steps.length > 0 && (
         <StepTimeline steps={entry.steps} events={entry.progress ?? []} totalMs={entry.ms} focusStep={focusStep}
                       onStep={h.onStep} onCypher={h.onCypher} />
       )}

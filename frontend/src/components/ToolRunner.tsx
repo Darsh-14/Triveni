@@ -5,11 +5,11 @@ import type { ToolInfo } from "@/lib/api";
 import { TrackTags } from "./ui";
 
 /** Form generated from a tool's JSON schema: run any read-only graph tool directly, no model involved. */
-export default function ToolRunner({ tools, onRun, busy }: {
-  tools: ToolInfo[]; busy: boolean; onRun: (name: string, args: Record<string, unknown>) => void;
+export default function ToolRunner({ tools, onRun, busy, initial }: {
+  tools: ToolInfo[]; busy: boolean; onRun: (name: string, args: Record<string, unknown>) => void; initial?: string;
 }) {
   const readTools = tools.filter((t) => t.read_only);
-  const [name, setName] = useState(readTools[0]?.name ?? "");
+  const [name, setName] = useState(initial ?? readTools[0]?.name ?? "");
   const [args, setArgs] = useState<Record<string, unknown>>({});
   const tool = readTools.find((t) => t.name === name) ?? readTools[0];
   if (!tool) return null;
