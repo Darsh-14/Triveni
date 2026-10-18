@@ -23,7 +23,7 @@ export interface ToolResult {
 }
 
 /** Every tool result states what happened, so an empty traversal is never read as "nothing is affected". */
-export type Outcome = "answered" | "from_memory" | "not_in_graph" | "unknown_entity" | "recorded" | "refused" | "error" | "";
+export type Outcome = "answered" | "from_memory" | "not_in_graph" | "unknown_entity" | "recorded" | "refused" | "no_rows" | "error" | "";
 
 /** How a typed name was matched to a graph node before the tool ran ("Priya" -> per:priya-nair, partial_name). */
 export interface Resolution {
@@ -65,6 +65,7 @@ export interface Verification {
   grounded: string[];
   unbacked: string[];
   unknown: string[];
+  caveat?: string; // set when a model-written query (graph_query) contributed: ids checked, logic not
 }
 
 /** Live status of a running /api/ask call: which provider is being tried, which tool is running, fallbacks. */

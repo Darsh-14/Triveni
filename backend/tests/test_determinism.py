@@ -174,3 +174,22 @@ def test_failed_models_cool_down_and_are_skipped(monkeypatch):
     assert [p.model for p in pv.make_chain(0)] == ["m1", "m2", "rules"]  # every free-tier model gets a turn
     pv.cool_down(pv.make_chain(0)[0], "groq: RateLimitError (m1): Error code: 429 - tokens per day")
     assert [p.model for p in pv.make_chain(0)] == ["m2", "rules"]  # m1 skipped instead of failing again
+
+
+def test_find_services_filters_on_current_edges(loaded):
+    r = run_tool(T, "find_services", {"lang": "kotlin", "team": "Ledger", "has_on_call": False})
+    assert [s["id"] for s in r.data["services"]] == ["svc:billing-batch"]  # seed: Ledger owns it, nobody on call
+    assert r.data["services"][0]["owners"] == ["team:ledger"] and r.data["services"][0]["on_call"] == []
+    orphans = {s["id"] for s in run_tool(T, "find_services", {"has_owner": False}).data["services"]}
+    assert orphans == {"svc:pdf-renderer-v1", "svc:legacy-fax-gateway"}
+    assert run_tool(T, "find_services", {"team": "Ledgr"}).outcome == "unknown_entity"
+
+
+@pytest.mark.parametrize("question,plan", [
+    ("Which tier-1 services have nobody on call?", [("find_services", {"tier": 1, "has_on_call": False})]),
+    ("kotlin services owned by Team Ledger", [("find_services", {"lang": "kotlin", "team": "team:ledger"})]),
+    ("Which python services have no owner?", [("find_services", {"lang": "python", "has_owner": False})]),
+    ("Which services have no owner?", [("find_orphans", {})]),
+])
+def test_rules_planner_filters_services(loaded, question, plan):
+    assert RulesProvider.plan(question, spot(get_graph(T), question)) == plan

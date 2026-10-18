@@ -495,6 +495,40 @@ RETURN a.id, a.kind, a.status, a.ts, a.decided_ts, a.proposed_by, s.id, s.name, 
 ORDER BY coalesce(a.decided_ts, a.ts) DESC LIMIT $limit
 ```
 
+### find_services: attribute filters over services **[01] [03]**
+`backend/app/tools/find_services.py`. One fixed, parameterized query covers every combination of tier, language, owning team, missing owner and missing on-call. A filter left out is passed as null and switched off with `$x IS NULL OR ...`, so no query text is ever built from input. Only current OWNS and ON_CALL_FOR edges count. The rules planner (no model) routes questions like "which tier-1 services have nobody on call?" here.
+```cypher
+MATCH (s:Service)
+WHERE ($tier IS NULL OR s.tier = $tier) AND ($lang IS NULL OR toLower(s.lang) = toLower($lang))
+OPTIONAL MATCH (t:Team)-[o:OWNS]->(s) WHERE o.valid_to IS NULL
+OPTIONAL MATCH (p:Person)-[c:ON_CALL_FOR]->(s) WHERE c.valid_to IS NULL
+WITH s, collect(DISTINCT t) AS teams, collect(DISTINCT p) AS oncall
+WHERE ($team IS NULL OR any(x IN teams WHERE x.id = $team))
+  AND ($has_owner IS NULL OR (size(teams) > 0) = $has_owner)
+  AND ($has_on_call IS NULL OR (size(oncall) > 0) = $has_on_call)
+OPTIONAL MATCH (d:Service)-[r:DEPENDS_ON]->(s) WHERE r.valid_to IS NULL
+RETURN s.id, s.name, s.tier, s.lang, [x IN teams | x.id], [x IN teams | x.name], [x IN oncall | x.id],
+       [x IN oncall | x.name], count(d) AS dependents
+ORDER BY s.tier, dependents DESC, s.id
+LIMIT $limit
+```
+
+### graph_query: the model's own read-only Cypher, last resort **[01] [03]**
+`backend/app/tools/graph_query.py`. This is the one place where the model writes the query, for questions no fixed tool covers (aggregations, rankings, multi-condition questions). It is a deliberate, fenced exception to "never build Cypher from model input":
+1. It is sent with `GRAPH.RO_QUERY`, so FalkorDB itself rejects any write (verified on the live database: "graph.RO_QUERY is to be executed only on read-only queries").
+2. Before sending, comments are removed. The query must be a single statement starting with MATCH, OPTIONAL MATCH, WITH, UNWIND or RETURN, and must contain no CREATE, MERGE, SET, DELETE, DETACH, REMOVE, DROP, FOREACH, LOAD CSV or CALL (checked with string literals masked).
+3. Every label and relationship type must exist in `schema.py`, so an invented `:Microservice` or `[:MANAGES]` is refused, not run.
+4. At most 50 rows (LIMIT added or lowered), with a 3 s server-side timeout.
+5. The tenant is the graph it runs on.
+
+Two more deterministic fences were added after live runs showed real model mistakes:
+- **Direction and endpoints.** Each hop with known endpoint labels is checked against the schema. `(d:Deployment)-[:CAUSED_BY]->(i:Incident)` is refused with "CAUSED_BY goes (Incident)-[:CAUSED_BY]->(Deployment)", and `(p:Person)-[:OWNS]->(s)` with "OWNS never connects Person and Service". A backwards hop would run, return nothing, and read like absence.
+- **Rewrites, always reported.** `count(x)` over a bare variable becomes `count(DISTINCT x)`. A model counted one deployment that caused two incidents as two deployments. A ranking cut below 5 rows (`ORDER BY ... LIMIT 1`) is raised to `LIMIT 5`, so ties show. The applied rewrites are listed in the result.
+
+An empty result has its own outcome, `no_rows`: a model-written query that matched nothing is not proof of absence, unlike `not_in_graph` from a fixed tool. Any answer that used a model-written query carries a caveat ("its ids are checked against the graph, its logic is not"), shown in the UI.
+
+Refusals and FalkorDB errors come back as `outcome: "refused"` with the reason, so the model can fix the query once. For example, FalkorDB has no `EXISTS { }` subqueries, and the tool description says what to use instead. The result carries the exact query, is marked `model_written`, and its ids count as evidence for the proof check.
+
 ## UI support (read-only)
 
 ### Node detail for the right panel **[F] [03]**

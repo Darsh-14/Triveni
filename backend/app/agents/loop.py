@@ -86,13 +86,59 @@ def mcp_tools(tools) -> list[dict]:
             for t in sorted(tools, key=lambda t: t.name)]
 
 
-async def _run_with(provider, session, tools, question, tenant, system, history, max_turns, progress) -> AgentResult:
+PREFETCH_CHARS = 2500  # per prefetched tool result in the prompt (same cut as MAX_RESULT_CHARS)
+
+
+async def prefetch(session, question: str, tenant: str, progress) -> list[tuple[Step, str]]:
+    """Graph-first: when the deterministic planner recognises the question (entities found in the graph + a clear
+    intent), run its read-only tools over MCP before any model is called. The model then starts from the graph's
+    answer and usually needs one round instead of two or three, which matters on free tiers that cap tokens per
+    minute. Questions that would write (handoff, propose, remember) are left to the model."""
+    from backend.app.tools import REGISTRY
+
+    planner = RulesProvider(tenant)
+    plan = planner.plan(question, planner._entities(question))
+    if not plan or any(not REGISTRY[name].read_only for name, _ in plan):
+        return []
+    out = []
+    for name, args in plan:
+        progress(f"graph-first: calling {name} over MCP")
+        t0 = time.perf_counter()
+        res = await session.call_tool(name, args)
+        ms = int((time.perf_counter() - t0) * 1000)
+        sc = res.structured_content or {}
+        if res.is_error or not sc:
+            continue
+        out.append((Step(tool=name, input=args, why="graph-first: chosen deterministically from the entities this "
+                         "question names in the graph, before any model was called", ok=True,
+                         explanation=sc.get("explanation", ""), tracks=sc.get("tracks", []), sources=sc.get("sources", []),
+                         cypher=sc.get("cypher", ""), params=sc.get("params", {}), paths=sc.get("paths", []), ms=ms,
+                         data=sc.get("data", {}), outcome=sc.get("outcome", ""), resolved=sc.get("resolved", [])), sc))
+    return out
+
+
+async def _run_with(provider, session, tools, question, tenant, system, history, max_turns, progress,
+                    prefetched: list | None = None) -> AgentResult:
     result = AgentResult(question=question, tenant=tenant, answer="", model=provider.name)
-    messages = list(history or []) + [provider.user(question)]
     # what the answer may cite: ids the user gave (question + earlier turns) and ids any tool returned this run
     result._context = question + "\n" + "\n".join(str(m.get("content", "")) for m in history or [])
     result._evidence = evidence_ids(result._context)
     result._evidence_text = []  # tool results as text: plainly named entities in them count as evidence too
+    prompt = question
+    for step, sc in prefetched or []:
+        result.steps.append(step)
+        result._evidence |= evidence_ids(json.dumps(sc, default=str))
+        result._evidence_text.append(json.dumps({k: sc.get(k) for k in ("explanation", "data")}, default=str))
+    if prefetched and isinstance(provider, RulesProvider):  # the planner already ran these; answer from them
+        result.answer = "Rules mode (no model available), straight from the graph tools:\n- " + "\n- ".join(
+            s.explanation for s, _ in prefetched if s.explanation)
+        result.model = "rules"
+        return result
+    if prefetched:
+        prompt = (question + "\n\n[Graph context, retrieved before you were called by deterministic tool calls over MCP. "
+                  "Answer from it and cite its ids and documents; call another tool only if something is missing.]\n"
+                  + "\n".join(f"- {s.tool}({json.dumps(s.input)}): {for_model(sc)[:PREFETCH_CHARS]}" for s, sc in prefetched))
+    messages = list(history or []) + [provider.user(prompt)]
     for n in range(max_turns):
         progress(f"{provider.name}: thinking" + (f" (round {n + 1})" if n else ""))
         turn = await provider.turn(system, messages, tools)
@@ -184,10 +230,12 @@ def history_messages(tenant: str, conversation_id: str | None) -> list[dict]:
 async def run_agent(question: str, tenant: str, system: str, history: list | None = None,
                     providers: list | None = None, max_turns: int = 10, conversation_id: str | None = None,
                     user_id: str = "user:demo", agent: str = "agent:triage", persist: bool = True,
-                    max_wait: float = 30.0, progress: Callable[[str], None] | None = None) -> AgentResult:
+                    max_wait: float = 30.0, progress: Callable[[str], None] | None = None,
+                    graph_first: bool | None = None) -> AgentResult:
     """max_wait: longest rate-limit wait per model call before falling back (the UI uses 0).
     progress: called with short status lines (provider tried, tool called, fallbacks) for a live status display."""
     progress = progress or (lambda _msg: None)
+    graph_first = providers is None if graph_first is None else graph_first  # on for the real chain (API, CLI)
     providers = providers if providers is not None else make_chain(max_wait)  # every model, minus ones cooling down
     for p in providers:  # the rules planner spots entities by name in this tenant's graph
         if isinstance(p, RulesProvider) and p.tenant is None:
@@ -201,9 +249,11 @@ async def run_agent(question: str, tenant: str, system: str, history: list | Non
             progress("starting the MCP server and listing tools")
             await session.initialize()
             tools = mcp_tools((await session.list_tools()).tools)
+            prefetched = await prefetch(session, question, tenant, progress) if graph_first else []
             for provider in providers:
                 try:
-                    result = await _run_with(provider, session, tools, question, tenant, system, history, max_turns, progress)
+                    result = await _run_with(provider, session, tools, question, tenant, system, history, max_turns,
+                                             progress, prefetched)
                 except ProviderUnavailable as exc:
                     failed.append(str(exc)[:300])
                     cool_down(provider, str(exc))  # the next questions skip it for a while
@@ -219,13 +269,19 @@ async def run_agent(question: str, tenant: str, system: str, history: list | Non
     progress("checking every entity the answer names against the graph")
     graph = get_graph(tenant)
     context, evidence_text = getattr(result, "_context", question), "\n".join(getattr(result, "_evidence_text", []))
-    result.verification = verify(graph, result.answer, getattr(result, "_evidence", set()), context, evidence_text)
+    result.verification = verify(graph, result.answer, getattr(result, "_evidence", set()), context, evidence_text,
+                                 tools_run={s.tool for s in result.steps})
     if reason := guard(result.verification):
         # a wrong name is worse than a flatter answer: show only what the tools returned, keep the draft for inspection
         progress(f"draft rejected ({reason}); answering from the tool results only")
         result.guard = {"reason": reason, "draft": result.answer, "draft_verification": result.verification}
         result.answer = compose_answer(result.steps)
-        result.verification = verify(graph, result.answer, getattr(result, "_evidence", set()), context, evidence_text)
+        result.verification = verify(graph, result.answer, getattr(result, "_evidence", set()), context, evidence_text,
+                                 tools_run={s.tool for s in result.steps})
+    if any(s.tool == "graph_query" and s.outcome == "answered" for s in result.steps):
+        # the proof check grounds ids, not query logic: a model-written count can be wrong with every id real
+        result.verification["caveat"] = ("Part of this answer comes from a model-written read-only query: its ids are "
+                                          "checked against the graph, its logic is not. Inspect the Cypher.")
     if persist:
         _persist(tenant, agent, user_id, conversation_id, result)
     return result

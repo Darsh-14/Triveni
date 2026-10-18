@@ -305,6 +305,23 @@ class RulesProvider:
             if kinds or not ents:
                 return [("recent", {"kind": k, **scope}) for k in (kinds or ["deployments", "incidents"])]
 
+        # 3c. attribute filters over services ("which tier-1 services have nobody on call?", "kotlin services owned
+        #     by Team Ledger", "python services without an owner"): one parameterized query, no model needed
+        filters: dict = {}
+        if m := re.search(r"\btier[\s-]*([123])\b", q):
+            filters["tier"] = int(m.group(1))
+        if m := re.search(r"\b(python|go|golang|java|kotlin|typescript|rust|ruby)\b", q):
+            filters["lang"] = "go" if m.group(1) == "golang" else m.group(1)
+        if re.search(r"(no ?one|nobody|no|without( an?)?|not have( an?)?|missing( an?)?|lack(s|ing)?( an?)?)\s+on[ -]?call", q):
+            filters["has_on_call"] = False
+        no_owner = re.search(r"no owner|unowned|without( an?)? owner|nobody owns|orphan", q)
+        if no_owner:
+            filters["has_owner"] = False
+        if teams and re.search(r"\bservices?\b", q) and (filters or not svcs):
+            filters["team"] = teams[0]["id"]
+        if filters and (set(filters) - {"has_owner"} or teams) and not svcs:
+            return [("find_services", filters)]
+
         # 4. whole-graph algorithms
         if re.search(r"single points? of (knowledge|failure)|key people|bus factor|knowledge silo", q):
             return [("key_people", {})]

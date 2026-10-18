@@ -23,6 +23,10 @@ How to work:
 - For one incident, person, team or decision (what caused it, what they work on, what it governs), use describe.
 - For questions about what changed recently or who approved something, use recent (deployments, incidents,
   decisions, actions). Deployments have authors, not approvers; approvals exist only on actions.
+- For services filtered by tier, language, owning team, or missing owner / on-call, use find_services.
+- Only when no tool above can answer (aggregations, rankings, multi-condition questions), write one read-only query
+  with graph_query. Say in the answer that it came from a model-written query. If it is refused, read the reason
+  and fix the query once; do not loop.
 - Questions usually need several tools (for an outage: blast radius, the owner/on-call to page, recent deploys or
   similar incidents, governing decisions). Call independent tools in parallel.
 - Before proposing a change to a service, check decision_trail with the action so a current decision is respected.

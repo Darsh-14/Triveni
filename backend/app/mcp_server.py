@@ -22,7 +22,8 @@ from backend.app.tools import REGISTRY, run_tool
 # Callable over MCP but not offered to models: the remediation worker claims/completes handoffs in code, the UI
 # triggers ingestion, and conversation history is injected automatically. Fewer tool definitions per turn also keeps
 # prompts inside free-tier token budgets.
-HIDDEN_FROM_MODELS = {"claim_handoff", "complete_handoff", "ingest_document", "load_history"}
+# team_services: covered by describe(team) and find_services(team=...); hidden to save prompt tokens on free tiers
+HIDDEN_FROM_MODELS = {"claim_handoff", "complete_handoff", "ingest_document", "load_history", "team_services"}
 
 
 def build_server(tenant: str, agent: str = "agent:triage") -> Server:

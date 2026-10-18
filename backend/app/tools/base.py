@@ -10,6 +10,8 @@ Every result also states its outcome explicitly, so an empty traversal is never 
   not_in_graph    the entity exists, but the fact asked about is not in the graph (e.g. nobody is on call)
   unknown_entity  an argument names nothing in this tenant's graph; the tool did not run (suggestions given)
   recorded        a write tool stored something (memory, handoff, action, ingest)
+  refused         graph_query would not run the model's query (unsafe, unknown label, or FalkorDB rejected it)
+  no_rows         graph_query ran but matched nothing: not proof of absence, unlike not_in_graph
 Entity arguments are resolved against the graph before the tool runs (graph/resolve.py).
 """
 from dataclasses import asdict, dataclass, field
@@ -20,7 +22,7 @@ from falkordb import Graph
 from backend.app.graph.resolve import CANDIDATES, Catalog, UnknownEntity, resolve
 from backend.app.graph.tenant import get_graph
 
-OUTCOMES = ("answered", "from_memory", "not_in_graph", "unknown_entity", "recorded")
+OUTCOMES = ("answered", "from_memory", "not_in_graph", "unknown_entity", "recorded", "refused", "no_rows")
 
 
 @dataclass

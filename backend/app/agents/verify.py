@@ -92,7 +92,21 @@ class Lexicon:
         return out
 
 
-def verify(graph: Graph, answer: str, evidence: set[str], context: str = "", evidence_text: str = "") -> dict:
+def claimed_tools(answer: str, tools_run: set[str]) -> list[str]:
+    """Tools the answer says it used ("a `why_not` check", "[blast_radius]") that did not run in this run.
+    Only names with an underscore, or written as code, are matched: "recall" and "recent" are ordinary words."""
+    from backend.app.tools import REGISTRY
+
+    out = []
+    for name in REGISTRY:
+        written = (rf"\b{name}\b" if "_" in name else rf"[`\[]{name}[`\]]")
+        if re.search(written, answer or "") and name not in tools_run and name not in out:
+            out.append(name)
+    return out
+
+
+def verify(graph: Graph, answer: str, evidence: set[str], context: str = "", evidence_text: str = "",
+           tools_run: set[str] | None = None) -> dict:
     """Check every reference in `answer`. `evidence`: ids returned by tools this run (plus ids the user typed);
     `context`: the question and earlier turns, whose plainly named entities also count as given by the user;
     `evidence_text`: the tool results as text, whose plainly named entities count as returned by a tool."""
@@ -105,7 +119,10 @@ def verify(graph: Graph, answer: str, evidence: set[str], context: str = "", evi
     grounded = [i for i in refs if i in existing and i in evidence]
     unbacked = [i for i in refs if i in existing and i not in evidence]
     unknown = [i for i in refs if i not in existing] + lex.invented(answer, " ".join([context, evidence_text, *evidence]))
-    total = len(refs) + len(unknown) - len([i for i in refs if i not in existing])
+    if tools_run is not None:  # claiming a tool that never ran is an unbacked claim, like naming an unseen entity
+        unbacked += [f"tool:{t}" for t in claimed_tools(answer, tools_run)]
+    total = len(refs) + len(unknown) - len([i for i in refs if i not in existing]) + len(
+        [u for u in unbacked if u.startswith("tool:")])
     verdict = ("no_citations" if not total else "verified" if len(grounded) == total
                else "unverified" if unknown else "partially_verified")
     return {"verdict": verdict, "cited": total, "grounded": grounded, "unbacked": unbacked, "unknown": unknown,

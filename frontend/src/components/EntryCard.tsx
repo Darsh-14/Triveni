@@ -242,6 +242,12 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
         </div>
       )}
 
+      {entry.verification?.caveat && (
+        <p className="mt-1.5 rounded-md border border-warn/30 bg-warn-soft px-2 py-1 text-xs text-warn">
+          <span className="font-semibold">Model-written query.</span> {entry.verification.caveat}
+        </p>
+      )}
+
       {entry.verification && (entry.verification.unbacked.length > 0 || entry.verification.unknown.length > 0) && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {entry.verification.unbacked.map((id) => <Chip key={id} tone="warn">{id}</Chip>)}

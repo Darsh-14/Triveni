@@ -97,6 +97,7 @@ Each tool result also carries `tracks: ["01","03"]` and `sources: [document ids]
 - MCP: the `mcp` package is 2.x (`FastMCP` is now `MCPServer`; we use the low-level `Server(on_list_tools=..., on_call_tool=...)` to serve the registry's exact JSON schemas).
 - `algo.betweenness` samples sources with replacement: samplingSize = node count is NOT exact and varies by seed. Use >= 2000 samples with a fixed seed and compare ranks/sets, not scores (verified Oct 16).
 - Read tools run read-only queries. Writes happen only in `remember`, handoff and action code paths.
+- One fenced exception to "never build Cypher from LLM input": `graph_query` (last resort) runs the model's own query through `GRAPH.RO_QUERY` (FalkorDB rejects writes) after static checks (single read statement, no write clauses or CALL, schema-only labels and relationship types, LIMIT <= 50, 3 s timeout). Everything else stays human-written and parameterized.
 
 ### Memory and coordination model (Track 02)
 - Conversation history: `Conversation`-[:HAS_MESSAGE]->`Message` chained by `NEXT`; `load_history` rebuilds the LLM context from the graph on every session start.
