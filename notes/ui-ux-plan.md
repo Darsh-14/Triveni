@@ -1,6 +1,6 @@
 # Triveni UI/UX plan
 
-Status: rev 2, awaiting approval (Oct 17).
+Status: rev 2 built (Oct 17); round 3 built (Oct 18): team grouping, step timeline, expand neighbours, entity page, command palette, resizable panes, before/after toggle. Not adopted: layered topology, as-of time slider, incident timeline, investigation notebook, dark mode.
 Decided: light theme with tokens ready for dark · deps `lucide-react` + `cytoscape-fcose` (directed chains use Cytoscape's built-in `breadthfirst`) · Evidence mode shows evidence nodes only.
 Rev 2 changes: layout and components taken from reference products (Section 2) · no descriptive text anywhere in the UI (Section 3).
 Scope: frontend only (`frontend/`), except items marked **(API)**. Constraints: one framework (Next.js + Tailwind + Cytoscape), no mobile layout, no auth, no decorative animation (cut list), feature freeze Oct 18 10:00 IST.

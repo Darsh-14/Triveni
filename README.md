@@ -13,7 +13,11 @@ Built for **Graph Hacks: Context for AI Agents** (WeMakeDevs × FalkorDB). Track
 Incident questions are about connections: what depends on this service, who owns it, what changed, which decision constrains us, who fixed this before. Each one is a traversal, and none is a text lookup. Every Triveni answer includes the Cypher it ran, the path it found, and the source documents behind it.
 
 ## Interface
-One screen, laid out after tools engineers already use. Left: the thread, where every answer shows a verdict from the deterministic proof check, its source documents as cards, the answer with every cited id as a clickable chip, and the tool result as structured fields (who to page, decision chain, recalled episode, what changed, action awaiting approval). Centre: the evidence subgraph on a Cytoscape canvas (Force / Tree / Radial layouts, label and relationship filters, search, Dim, Graph | Table views). Right: node properties with current and historical edges, the Cypher and parameters of each step, the source document, and the approvals inbox. Clicking a step highlights only that step's path.
+One screen, laid out after tools engineers already use (FalkorDB Browser, Perplexity, incident.io, Langfuse, Neo4j Bloom, Backstage).
+- **Thread** (left): every answer shows a verdict from the deterministic proof check, its tool calls as a timeline (each bar placed when the agent called the tool, as long as the call took), its source documents as cards, the answer with every cited id as a clickable chip, and the tool result as structured fields (who to page, decision chain, recalled episode, what changed, action awaiting approval).
+- **Graph** (centre): the overview groups services inside their owning team, with unowned services in a dashed "No owner" box; double-click a team to fold it. Answers show their evidence subgraph (Force / Tree / Radial layouts, label and relationship filters, search, Dim, Graph | Table views). Double-click any node, or use +1 hop / +2 hops, to grow the canvas from it. An ingest that ended a fact gets a Before | After | Both toggle.
+- **Right panel**: an entity page per node (owner, on call, team, then edges grouped by what they reach, each with its source document, and ended facts under History), the Cypher and parameters of each step, the source document, and the approvals inbox.
+- **Ctrl/Cmd+K** opens a command palette over scenarios, actions, conversations, tools and every node. Panes can be resized or the thread hidden.
 
 ## Setup
 ```bash
