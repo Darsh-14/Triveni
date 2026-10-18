@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LayoutGrid, Maximize, MessagesSquare, PanelLeftClose, PanelLeftOpen, Play, Plus, Repeat, Search, Send, ShieldCheck, Table2,
-         Wrench, X } from "lucide-react";
+import { Box, Command, LayoutGrid, Maximize, MessagesSquare, PanelLeftClose, PanelLeftOpen, Play, Plus, Repeat, Search, Send, ShieldCheck, Square, Table2, Wrench, X } from "lucide-react";
 import {
   api, parseEdge, toolAsStep, type AgentResult, type ConversationInfo, type GraphEdge, type GraphNode, type Health,
   type Guard, type Person, type Step, type ToolInfo,
 } from "@/lib/api";
 import { SCENARIOS, TRACK_COLUMNS, type Scenario } from "@/lib/scenarios";
+import { stripEmoji } from "@/lib/text";
 import EntryCard, { type Entry } from "./EntryCard";
 import GraphCanvas, { edgeKey, type Compare, type LayoutName } from "./GraphCanvas";
+import Graph3D from "./Graph3D";
 import GraphTable from "./GraphTable";
 import RightPanel, { type PanelState, type PanelTab } from "./RightPanel";
 import ToolRunner from "./ToolRunner";
@@ -86,7 +87,7 @@ export default function Triveni() {
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [graph, setGraph] = useState<GraphState>({ nodes: [], edges: [], roots: [], title: "", entryId: null });
   const [layout, setLayout] = useState<LayoutName>("force");
-  const [view, setView] = useState<"graph" | "table">("graph");
+  const [view, setView] = useState<"3d" | "2d" | "table">("3d"); // 3D by default; 2D stays as a flat fallback
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -155,7 +156,7 @@ export default function Triveni() {
   }, [tenant]);
 
   // shortcut label for the search button (read after mount: the server render cannot know the platform)
-  useEffect(() => { setModKey(/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl"); }, []); // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => { setModKey(/Mac|iPhone|iPad/.test(navigator.platform) ? "mac" : "Ctrl"); }, []); // eslint-disable-line react-hooks/set-state-in-effect
 
   useEffect(() => { setPanes(loadPanes()); }, []); // eslint-disable-line react-hooks/set-state-in-effect
   const resize = (patch: Partial<typeof DEFAULT_PANES>) => setPanes((cur) => {
@@ -349,14 +350,15 @@ export default function Triveni() {
       ...SCENARIOS.map((sc) => ({ id: `scenario:${sc.n}`, group: "Scenarios", label: sc.label, hint: `#${sc.n}`,
                                  keywords: sc.question, icon: <Play size={14} />, run: () => { runScenario(sc); } })),
       { id: "action:overview", group: "Actions", label: "Overview", icon: <LayoutGrid size={14} />, run: () => { showOverview(tenant); } },
-      { id: "action:table", group: "Actions", label: view === "graph" ? "Table view" : "Graph view", icon: <Table2 size={14} />,
-        run: () => setView(view === "graph" ? "table" : "graph") },
+      { id: "action:3d", group: "Actions", label: "3D view", icon: <Box size={14} />, run: () => setView("3d") },
+      { id: "action:2d", group: "Actions", label: "2D view", icon: <Square size={14} />, run: () => setView("2d") },
+      { id: "action:table", group: "Actions", label: "Table view", icon: <Table2 size={14} />, run: () => setView("table") },
       { id: "action:approvals", group: "Actions", label: "Approvals", hint: pendingApprovals ? String(pendingApprovals) : undefined,
         icon: <ShieldCheck size={14} />, run: openApprovals },
       { id: "action:new", group: "Actions", label: "New conversation", icon: <Plus size={14} />, run: () => { openConversation(null); } },
       { id: "action:fit", group: "Actions", label: "Fit graph", hint: "f", icon: <Maximize size={14} />,
         run: () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "f" })) },
-      ...conversations.map((c) => ({ id: `conv:${c.id}`, group: "Conversations", label: c.title, hint: c.id,
+      ...conversations.map((c) => ({ id: `conv:${c.id}`, group: "Conversations", label: stripEmoji(c.title), hint: c.id,
                                      icon: <MessagesSquare size={14} />, run: () => { openConversation(c.id); } })),
       ...tools.filter((t) => t.read_only).map((t) => ({ id: `tool:${t.name}`, group: "Tools", label: t.name, keywords: t.description,
                                                        icon: <Wrench size={14} />, run: () => openTool(t.name) })),
@@ -412,7 +414,9 @@ export default function Triveni() {
         <button onClick={() => setPaletteOpen(true)}
                 className="ml-4 flex w-64 items-center gap-2 rounded border border-line bg-raised px-2.5 py-1 text-[13px] text-ink-3 hover:border-line-strong">
           <Search size={14} aria-hidden /><span className="flex-1 text-left">Search</span>
-          <kbd className="rounded border border-line bg-panel px-1 font-mono text-[11px]">{modKey} K</kbd>
+          <kbd className="inline-flex items-center gap-0.5 rounded border border-line bg-panel px-1 font-mono text-[11px]">
+            {modKey === "mac" ? <Command size={11} aria-label="Command" /> : modKey} K
+          </kbd>
         </button>
         <div className="ml-auto flex items-center gap-2 text-xs">
           {health?.demo_replay && <Chip tone="warn"><Repeat size={12} aria-hidden />Replay</Chip>}
@@ -437,12 +441,12 @@ export default function Triveni() {
             ["tools", "Tools", Wrench],
           ] as const).map(([key, label, Icon]) => (
             <button key={key} title={label} aria-label={label} aria-pressed={flyout === key} onClick={() => setFlyout(flyout === key ? null : key)}
-                    className={`grid h-9 w-9 place-items-center rounded ${flyout === key ? "bg-accent-soft text-accent" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
+                    className={`grid h-9 w-9 place-items-center rounded ${flyout === key ? "bg-accent-soft text-accent-ink" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
               <Icon size={18} />
             </button>
           ))}
           <button title="Approvals" aria-label="Approvals" onClick={openApprovals}
-                  className={`relative grid h-9 w-9 place-items-center rounded ${panel?.tab === "approvals" ? "bg-accent-soft text-accent" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
+                  className={`relative grid h-9 w-9 place-items-center rounded ${panel?.tab === "approvals" ? "bg-accent-soft text-accent-ink" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
             <ShieldCheck size={18} />
             {pendingApprovals > 0 && (
               <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-[2px] bg-warn px-0.5 text-center font-mono text-[10px] leading-4 text-white">{pendingApprovals}</span>
@@ -477,7 +481,7 @@ export default function Triveni() {
                     <button key={c.id} onClick={() => openConversation(c.id)}
                             className={`flex w-full items-center gap-2 rounded px-2.5 py-2 text-left hover:bg-raised ${c.id === conversationId ? "bg-accent-soft" : ""}`}>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] text-ink">{c.title}</span>
+                        <span className="block truncate text-[13px] text-ink">{stripEmoji(c.title)}</span>
                         <span className="font-mono text-[11px] text-ink-3">{c.id} · {(c.last_ts ?? c.started_ts).slice(0, 16).replace("T", " ")}</span>
                       </span>
                       <span className="text-xs tabular-nums text-ink-3">{c.messages}</span>
@@ -510,7 +514,7 @@ export default function Triveni() {
                      className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3 disabled:opacity-60" />
               {conversationId && <span className="font-mono text-[11px] text-ink-3">{conversationId}</span>}
               <button disabled={!agentOnline || busy || !question.trim()} aria-label="Send"
-                      className="grid h-7 w-7 place-items-center rounded bg-accent text-white disabled:opacity-40"><Send size={14} /></button>
+                      className="grid h-7 w-7 place-items-center rounded bg-ink text-white disabled:opacity-40"><Send size={14} /></button>
             </div>
           </form>
         </section>
@@ -524,9 +528,9 @@ export default function Triveni() {
         <section className="flex min-w-0 flex-1 flex-col bg-panel">
           <div className="flex h-10 shrink-0 items-center gap-3 border-b border-line px-3 text-xs">
             <div role="tablist" className="flex rounded border border-line p-0.5">
-              {(["graph", "table"] as const).map((v) => (
+              {([["3d", "3D"], ["2d", "2D"], ["table", "Table"]] as const).map(([v, label]) => (
                 <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)}
-                        className={`rounded px-2.5 py-0.5 font-medium capitalize ${view === v ? "bg-raised text-ink" : "text-ink-3 hover:text-ink"}`}>{v}</button>
+                        className={`rounded px-2.5 py-0.5 font-medium ${view === v ? "bg-raised text-ink" : "text-ink-3 hover:text-ink"}`}>{label}</button>
               ))}
             </div>
             <span className="min-w-0 flex-1 truncate font-medium text-ink-2" title={graph.title}>{graph.title}</span>
@@ -545,7 +549,13 @@ export default function Triveni() {
             )}
           </div>
           <div className="relative isolate min-h-0 flex-1">
-            <div className={view === "graph" ? "h-full" : "hidden"}>
+            {view === "3d" && (
+              <Graph3D nodes={graph.nodes} edges={graph.edges} roots={graph.roots} focus={focus} hover={hover}
+                       layout={layout} onLayout={setLayout} selected={selected} onSelect={selectNode}
+                       onExpand={(id) => expandNode(id, 1)} compare={compare}
+                       onUnavailable={() => { setView("2d"); setError("3D needs WebGL, which this browser has turned off: showing 2D"); }} />
+            )}
+            <div className={view === "2d" ? "h-full" : "hidden"}>
               <GraphCanvas nodes={graph.nodes} edges={graph.edges} roots={graph.roots} focus={focus} hover={hover}
                            layout={layout} onLayout={setLayout} selected={selected} onSelect={selectNode}
                            onExpand={(id) => expandNode(id, 1)} compare={compare} />

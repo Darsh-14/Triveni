@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Bot, Check } from "lucide-react";
+import { ArrowRight, Bot, Check, LoaderCircle } from "lucide-react";
 import { api, type ActionInfo, type AgentResult, type HandoffInfo, type Person } from "@/lib/api";
 import { Chip, EntityChip, toneOf } from "./ui";
 
@@ -106,7 +106,7 @@ export default function Approvals({ tenant, refreshKey, onOpen, onResult, onChan
               {a.status === "proposed" && (
                 <div className="mt-2 flex gap-1.5">
                   <button disabled={busy || !approver} onClick={() => decide(a.id, true)}
-                          className="rounded bg-accent px-3 py-1 font-medium text-white hover:bg-accent/90 disabled:opacity-50">Approve</button>
+                          className="rounded bg-ink px-3 py-1 font-medium text-white hover:bg-ink-2 disabled:opacity-50">Approve</button>
                   <button disabled={busy || !approver} onClick={() => decide(a.id, false)}
                           className="rounded border border-line-strong px-3 py-1 font-medium text-ink-2 hover:bg-raised disabled:opacity-50">Reject</button>
                 </div>
@@ -121,7 +121,7 @@ export default function Approvals({ tenant, refreshKey, onOpen, onResult, onChan
           <h3 className="text-[13px] font-semibold text-ink">Handoffs <span className="font-mono font-normal text-ink-3">{handoffs.length}</span></h3>
           <button disabled={busy} onClick={runRemediation}
                   className="ml-auto inline-flex items-center gap-1 rounded border border-line-strong px-2 py-1 font-medium text-ink-2 hover:bg-raised disabled:opacity-50">
-            <Bot size={14} />{busy ? "Running…" : "Run remediation"}
+            {busy ? <LoaderCircle size={14} className="animate-spin" aria-hidden /> : <Bot size={14} aria-hidden />}{busy ? "Running" : "Run remediation"}
           </button>
         </div>
         {handoffs.length === 0 && <p className="text-ink-3">No handoffs</p>}
@@ -129,7 +129,7 @@ export default function Approvals({ tenant, refreshKey, onOpen, onResult, onChan
           {handoffs.map((h) => (
             <div key={h.id} className="py-2.5">
               <div className="flex flex-wrap items-center gap-1.5">
-                <EntityChip id={h.from} onOpen={onOpen} /><span className="text-ink-3">→</span><EntityChip id={h.to} onOpen={onOpen} />
+                <EntityChip id={h.from} onOpen={onOpen} /><ArrowRight size={12} className="text-ink-3" aria-label="to" /><EntityChip id={h.to} onOpen={onOpen} />
                 {h.incident && <EntityChip id={h.incident} onOpen={onOpen} />}
                 <span className="ml-auto font-mono text-[11px] text-ink-3">{h.id}</span>
               </div>

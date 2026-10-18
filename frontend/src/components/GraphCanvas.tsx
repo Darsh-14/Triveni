@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Core, ElementDefinition, LayoutOptions, NodeSingular } from "cytoscape";
-import { Boxes, ChevronDown, ChevronsDownUp, ChevronUp, X, Eye, EyeOff, Maximize, Network, Orbit, Search, Share2, SunDim, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowRight, Boxes, ChevronDown, ChevronUp, ChevronsDownUp, Eye, EyeOff, Maximize, Network, Orbit, Search, Share2, SunDim, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { GraphEdge, GraphNode } from "@/lib/api";
 import { styleOf } from "@/lib/entities";
 import { IconButton, ShapeSwatch } from "./ui";
@@ -29,37 +29,37 @@ export const edgeKey = (e: GraphEdge) => `${e.type}:${e.source}->${e.target}`;
 const STYLE = [
   { selector: "node", style: {
       "background-color": "data(colour)", shape: "data(shape)", label: "data(label)", width: 22, height: 22,
-      "font-size": 11, "font-family": "IBM Plex Sans, Arial, sans-serif", color: "#3a4048", "min-zoomed-font-size": 8, "text-valign": "bottom", "text-margin-y": 4,
+      "font-size": 11, color: "#2f3228", "min-zoomed-font-size": 8, "text-valign": "bottom", "text-margin-y": 4,
       "text-wrap": "ellipsis", "text-max-width": "120px", "border-width": 0 } },
-  { selector: "node.root", style: { width: 30, height: 30, "border-width": 3, "border-color": "#16191d", "font-weight": 600, "font-size": 11 } },
-  { selector: "node:selected", style: { "border-width": 3, "border-color": "#24548f", "overlay-opacity": 0 } },
-  { selector: "node.hover", style: { "border-width": 3, "border-color": "#24548f", width: 30, height: 30, "z-index": 20 } },
+  { selector: "node.root", style: { width: 30, height: 30, "border-width": 3, "border-color": "#181914", "font-weight": 600, "font-size": 11 } },
+  { selector: "node:selected", style: { "border-width": 3, "border-color": "#ff1053", "overlay-opacity": 0 } },
+  { selector: "node.hover", style: { "border-width": 3, "border-color": "#ff1053", width: 30, height: 30, "z-index": 20 } },
   { selector: "edge", style: {
-      width: 1.5, "line-color": "#8c939b", "target-arrow-color": "#8c939b", "target-arrow-shape": "triangle",
-      "curve-style": "bezier", "arrow-scale": 0.8, label: "data(label)", "font-size": 10, "font-family": "IBM Plex Mono, monospace", color: "#5c636c",
+      width: 1.5, "line-color": "#a6a88f", "target-arrow-color": "#a6a88f", "target-arrow-shape": "triangle",
+      "curve-style": "bezier", "arrow-scale": 0.8, label: "data(label)", "font-size": 10, "font-family": "IBM Plex Mono, monospace", color: "#5f6450",
       "min-zoomed-font-size": 7, "text-background-color": "#ffffff", "text-background-opacity": 0.9,
       "text-background-padding": "1px" } },
-  { selector: "edge.overview", style: { label: "", width: 1, "line-color": "#d0d4d9", "target-arrow-color": "#d0d4d9" } },
-  { selector: "edge.old", style: { "line-style": "dashed", "line-color": "#8a5600", "target-arrow-color": "#8a5600", color: "#8a5600" } },
+  { selector: "edge.overview", style: { label: "", width: 1, "line-color": "#d4d5c7", "target-arrow-color": "#d4d5c7" } },
+  { selector: "edge.old", style: { "line-style": "dashed", "line-color": "#873828", "target-arrow-color": "#873828", color: "#873828" } },
   // team grouping (overview): a team is a box around the services it owns; collapsed it is one node
   { selector: "node:parent", style: {
-      shape: "rectangle", "background-color": "#16191d", "background-opacity": 0.02, "border-width": 1,
-      "border-color": "#c1c6cc", padding: "14px", label: "data(label)", "text-valign": "top",
-      "text-halign": "left", "text-margin-y": -4, "font-size": 12, "font-weight": 600, color: "#3a4048" } },
-  { selector: "node.unowned", style: { "border-style": "dashed", "border-color": "#8a5600",
-      "background-opacity": 0, color: "#8a5600" } },
-  { selector: "node.collapsed", style: { width: 40, height: 40, "font-weight": 600, color: "#3a4048" } },
-  { selector: "edge.meta", style: { width: "mapData(count, 1, 12, 1.5, 6)", "line-color": "#8c939b", "target-arrow-color": "#8c939b" } },
-  { selector: "edge.asof", style: { "line-style": "solid", "line-color": "#8c939b", "target-arrow-color": "#8c939b", color: "#5c636c", label: "data(type)" } },
+      shape: "rectangle", "background-color": "#181914", "background-opacity": 0.02, "border-width": 1,
+      "border-color": "#b9baa3", padding: "14px", label: "data(label)", "text-valign": "top",
+      "text-halign": "left", "text-margin-y": -4, "font-size": 12, "font-weight": 600, color: "#2f3228" } },
+  { selector: "node.unowned", style: { "border-style": "dashed", "border-color": "#873828",
+      "background-opacity": 0, color: "#873828" } },
+  { selector: "node.collapsed", style: { width: 40, height: 40, "font-weight": 600, color: "#2f3228" } },
+  { selector: "edge.meta", style: { width: "mapData(count, 1, 12, 1.5, 6)", "line-color": "#a6a88f", "target-arrow-color": "#a6a88f" } },
+  { selector: "edge.asof", style: { "line-style": "solid", "line-color": "#a6a88f", "target-arrow-color": "#a6a88f", color: "#5f6450", label: "data(type)" } },
   { selector: "edge.quiet", style: { label: "" } },
   { selector: "edge.quiet.lit", style: { label: "data(label)" } },
   // following a line: hovering a node lights its lines; hovering or clicking a line lights it and names it
-  { selector: "edge.flow", style: { width: 2.5, "line-color": "#24548f", "target-arrow-color": "#24548f", "z-index": 90 } },
-  { selector: "edge.hot", style: { width: 3, "line-color": "#24548f", "target-arrow-color": "#24548f", "arrow-scale": 1,
-      label: "data(label)", color: "#16191d", "z-index": 99 } },
-  { selector: "edge.pinned", style: { width: 3.5, "line-color": "#24548f", "target-arrow-color": "#24548f", "arrow-scale": 1.1,
-      label: "data(label)", color: "#16191d", "font-size": 11, "z-index": 100 } },
-  { selector: "node.end", style: { "border-width": 3, "border-color": "#24548f", "font-weight": 600, "z-index": 100 } },
+  { selector: "edge.flow", style: { width: 2.5, "line-color": "#ff1053", "target-arrow-color": "#ff1053", "z-index": 90 } },
+  { selector: "edge.hot", style: { width: 3, "line-color": "#ff1053", "target-arrow-color": "#ff1053", "arrow-scale": 1,
+      label: "data(label)", color: "#181914", "z-index": 99 } },
+  { selector: "edge.pinned", style: { width: 3.5, "line-color": "#ff1053", "target-arrow-color": "#ff1053", "arrow-scale": 1.1,
+      label: "data(label)", color: "#181914", "font-size": 11, "z-index": 100 } },
+  { selector: "node.end", style: { "border-width": 3, "border-color": "#ff1053", "font-weight": 600, "z-index": 100 } },
   { selector: ".faded", style: { opacity: 0.12, "text-opacity": 0 } },
   { selector: ".off", style: { display: "none" } },
 ];
@@ -197,6 +197,9 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
       if (disposed || !container.current) return;
       try { cytoscape.use(fcose); } catch { /* already registered (fast refresh) */ }
       cy.current = cytoscape({ container: container.current, style: STYLE as never, minZoom: 0.15, maxZoom: 2.5 });
+      // node labels in the app's text face (next/font gives it a generated family name, read from the CSS variable)
+      const face = getComputedStyle(document.documentElement).getPropertyValue("--font-heros").trim();
+      if (face) cy.current.style().selector("node").style("font-family", face).update();
       cy.current.on("tap", "node", (e) => { if (!e.target.id().startsWith("group:")) handlers.current.onSelect(e.target.id()); });
       cy.current.on("tap", (e) => { if (e.target === cy.current) { handlers.current.onSelect(null); setPinned(null); } });
       cy.current.on("tap", "edge", (e) => {
@@ -386,7 +389,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
       {pinned && (
         <div className="absolute left-3 top-14 z-10 flex max-w-[calc(100%-5rem)] items-center gap-2 rounded border border-accent bg-panel px-2 py-1 text-xs">
           <span className="truncate text-ink">{pinned.from}</span>
-          <span className="shrink-0 font-mono text-[11px] text-accent">{pinned.type} →</span>
+          <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[11px] text-accent-ink">{pinned.type}<ArrowRight size={11} aria-hidden /></span>
           <span className="truncate text-ink">{pinned.to}</span>
           <button onClick={() => setPinned(null)} aria-label="Clear highlighted line" title="Clear (Esc)"
                   className="ml-1 shrink-0 text-ink-3 hover:text-ink"><X size={13} /></button>
@@ -430,7 +433,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
         <div role="radiogroup" aria-label="Layout" className="flex flex-col gap-0.5">
           {([["force", "Force layout", Share2], ["tree", "Tree layout", Network], ["radial", "Radial layout", Orbit]] as const).map(([l, label, Icon]) => (
             <button key={l} role="radio" aria-checked={layout === l} title={label} aria-label={label} onClick={() => onLayout(l)}
-                    className={`grid h-8 w-8 place-items-center rounded ${layout === l ? "bg-accent-soft text-accent" : "text-ink-2 hover:bg-raised"}`}>
+                    className={`grid h-8 w-8 place-items-center rounded ${layout === l ? "bg-accent-soft text-accent-ink" : "text-ink-2 hover:bg-raised"}`}>
               <Icon size={16} />
             </button>
           ))}

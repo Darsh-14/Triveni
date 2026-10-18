@@ -1,9 +1,10 @@
 "use client";
 
 import { Fragment, useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleX, LoaderCircle } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleX, LoaderCircle } from "lucide-react";
 import { api, type Doc, type Guard, type ProgressEvent, type Step, type Track, type Verification } from "@/lib/api";
 import { docKindOfId, ID_PATTERN } from "@/lib/entities";
+import { stripEmoji } from "@/lib/text";
 import Callouts from "./Callouts";
 import StepTimeline from "./StepTimeline";
 import { Chip, EntityChip, TrackTags, type Tone } from "./ui";
@@ -55,13 +56,13 @@ function Pending({ entry, onCancel }: { entry: Entry; onCancel: () => void }) {
   const provider = [...events].reverse().map((e) => /^(\w+): /.exec(e.msg)?.[1]).find(Boolean);
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs" aria-live="polite">
-      <LoaderCircle size={14} className="animate-spin text-accent" aria-label="Working" />
+      <LoaderCircle size={14} className="animate-spin text-accent-ink" aria-label="Working" />
       <span className="tabular-nums text-ink-3">{elapsed}s</span>
       {failed.map((p) => <span key={p} className="font-mono text-ink-3 line-through">{p}</span>)}
       {provider && <span className="font-mono text-ink-2">{provider}</span>}
       {tools.map((t, i) => (
-        <span key={i} className={`font-mono ${i === tools.length - 1 ? "text-accent" : "text-ink-3"}`}>
-          {t}{i === tools.length - 1 ? " …" : " ✓"}
+        <span key={i} className={`inline-flex items-center gap-1 font-mono ${i === tools.length - 1 ? "text-accent-ink" : "text-ink-3"}`}>
+          {t}{i === tools.length - 1 ? <LoaderCircle size={11} className="animate-spin" aria-label="running" /> : <Check size={11} aria-label="done" />}
         </span>
       ))}
       {entry.mode === "agent" && <button onClick={onCancel} className="ml-auto text-ink-3 hover:text-ink">Cancel</button>}
@@ -77,7 +78,7 @@ const VERDICT: Record<Verification["verdict"], { word: string; tone: Tone; Icon:
   no_citations: { word: "No citations", tone: "muted", Icon: CircleAlert },
 };
 
-const TONE_TEXT: Record<Tone, string> = { ok: "text-ok", warn: "text-warn", bad: "text-bad", info: "text-accent", muted: "text-ink-3" };
+const TONE_TEXT: Record<Tone, string> = { ok: "text-ok", warn: "text-warn", bad: "text-bad", info: "text-accent-ink", muted: "text-ink-3" };
 
 function Verdict({ v }: { v: Verification }) {
   const { word, tone, Icon } = VERDICT[v.verdict];
@@ -178,7 +179,7 @@ function inline(text: string, h: Handlers, key: string): ReactNode[] {
 }
 
 function AnswerText({ text, h }: { text: string; h: Handlers }) {
-  const lines = text.split("\n");
+  const lines = stripEmoji(text).split("\n");
   const blocks: ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   const flush = () => {
@@ -218,7 +219,7 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
   return (
     <article aria-current={active || undefined} className={`border-b border-line px-5 py-5 ${active ? "bg-panel" : ""}`}>
       <button onClick={onSelect} className="w-full text-left">
-        <h3 className="text-base font-semibold leading-snug text-ink">{entry.question}</h3>
+        <h3 className="text-base font-semibold leading-snug text-ink">{stripEmoji(entry.question)}</h3>
       </button>
 
       {entry.pending && <Pending entry={entry} onCancel={h.onCancel} />}

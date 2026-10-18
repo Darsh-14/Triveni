@@ -40,7 +40,7 @@ export default function ToolRunner({ tools, onRun, busy, initial }: {
             {p.enum ? (
               <select value={String(args[key] ?? p.default ?? "")} className={field}
                       onChange={(e) => set(key, p.type === "integer" ? Number(e.target.value) : e.target.value)}>
-                {!required.has(key) && <option value="">—</option>}
+                {!required.has(key) && <option value="">Any</option>}
                 {p.enum.map((v) => <option key={String(v)} value={String(v)}>{String(v)}</option>)}
               </select>
             ) : p.type === "boolean" ? (
@@ -56,7 +56,7 @@ export default function ToolRunner({ tools, onRun, busy, initial }: {
           </label>
         ))}
       </div>
-      <button disabled={busy} className="w-full rounded bg-accent py-1.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50">
+      <button disabled={busy} className="w-full rounded bg-ink py-1.5 text-sm font-medium text-white hover:bg-ink-2 disabled:opacity-50">
         Run
       </button>
     </form>

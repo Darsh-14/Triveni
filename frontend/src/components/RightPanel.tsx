@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, Copy, Expand, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Copy, Expand, X } from "lucide-react";
 import { api, type Doc, type NodeDetail, type Step } from "@/lib/api";
 import { ID_PATTERN } from "@/lib/entities";
 import type { AgentResult } from "@/lib/api";
@@ -29,7 +29,7 @@ function Cypher({ text }: { text: string }) {
   };
   for (const m of text.matchAll(token)) {
     pushPlain(text.slice(last, m.index), `p${last}`);
-    const cls = m[1] ? "text-accent" : m[2] ? "text-ok" : m[3] ? "text-ink-3 italic" : "text-ink-2";
+    const cls = m[1] ? "text-accent-ink" : m[2] ? "text-ok" : m[3] ? "text-ink-3 italic" : "text-ink-2";
     out.push(<span key={`t${m.index}`} className={cls}>{m[0]}</span>);
     last = (m.index ?? 0) + m[0].length;
   }
@@ -109,7 +109,12 @@ function NodeTab({ tenant, id, onOpen, onExpand }: {
 
   const row = (e: (typeof current)[number], i: number, old = false) => (
     <tr key={i} className="border-t border-line">
-      <td className="whitespace-nowrap py-1 pr-2 font-mono text-[11px] text-ink-3">{e.out ? "→" : "←"} <span className={old ? "line-through" : ""}>{e.type}</span></td>
+      <td className="whitespace-nowrap py-1 pr-2 font-mono text-[11px] text-ink-3">
+        <span className="inline-flex items-center gap-1">
+          {e.out ? <ArrowRight size={11} aria-label="outgoing" /> : <ArrowLeft size={11} aria-label="incoming" />}
+          <span className={old ? "line-through" : ""}>{e.type}</span>
+        </span>
+      </td>
       <td className="w-full max-w-0 py-1"><EntityChip id={e.id} name={e.name} struck={old} onOpen={onOpen} /></td>
       <td className="max-w-28 py-1 pl-2 text-right">{e.source_doc && <EntityChip id={e.source_doc} onOpen={onOpen} />}</td>
     </tr>
@@ -160,7 +165,7 @@ function NodeTab({ tenant, id, onOpen, onExpand }: {
             <table className="w-full text-xs"><tbody>{(open ? list : list.slice(0, FOLD_AT)).map((e, i) => row(e, i))}</tbody></table>
             {!open && (
               <button onClick={() => setUnfolded(new Set([...unfolded, label]))}
-                      className="mt-1 text-xs font-medium text-accent hover:underline">+{list.length - FOLD_AT}</button>
+                      className="mt-1 text-xs font-medium text-accent-ink hover:underline">+{list.length - FOLD_AT}</button>
             )}
           </Section>
         );
@@ -201,7 +206,7 @@ function CypherTab({ step }: { step: Step }) {
         <tbody>
           {Object.entries(step.params).map(([k, v]) => (
             <tr key={k} className="border-t border-line">
-              <td className="w-28 py-1 pr-2 font-mono text-[11px] text-accent">${k}</td>
+              <td className="w-28 py-1 pr-2 font-mono text-[11px] text-accent-ink">${k}</td>
               <td className="break-all py-1 font-mono text-[11px] text-ink-2">{JSON.stringify(v)}</td>
             </tr>
           ))}
@@ -227,7 +232,7 @@ function SourceTab({ tenant, id, onOpen }: { tenant: string; id: string; onOpen:
   let last = 0;
   for (const m of d.text.matchAll(ID_PATTERN)) {
     body.push(d.text.slice(last, m.index));
-    body.push(<button key={m.index} onClick={() => onOpen(m[0])} className="font-mono text-accent underline decoration-dotted">{m[0]}</button>);
+    body.push(<button key={m.index} onClick={() => onOpen(m[0])} className="font-mono text-accent-ink underline decoration-dotted">{m[0]}</button>);
     last = (m.index ?? 0) + m[0].length;
   }
   body.push(d.text.slice(last));

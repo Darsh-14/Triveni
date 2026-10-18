@@ -2,26 +2,27 @@
 // a shape and a colour, so node types never differ by colour alone.
 export type Shape = "round-rectangle" | "ellipse" | "hexagon" | "tag" | "triangle" | "diamond" | "rectangle" | "octagon" | "round-tag";
 
-// Muted, distinct hues (not a stock palette), each at least 3:1 against white; the shape carries the type too.
+// From the "mono neon picnic" families only: olive and ash for systems and teams, almond for people and decisions,
+// fuchsia for incidents (the one neon thing) and the agent's memory. The shape carries the type too.
 export const LABEL_STYLE: Record<string, { colour: string; shape: Shape }> = {
-  Service: { colour: "#3a6ea5", shape: "round-rectangle" },
-  Person: { colour: "#4a7a52", shape: "ellipse" },
-  Team: { colour: "#2f5a3a", shape: "hexagon" },
-  Deployment: { colour: "#3f7f7a", shape: "tag" },
-  Incident: { colour: "#b42318", shape: "triangle" },
-  Decision: { colour: "#a8680f", shape: "diamond" },
-  Document: { colour: "#6b717a", shape: "rectangle" },
-  Episode: { colour: "#6e5a7e", shape: "octagon" },
-  Lesson: { colour: "#5d4b6e", shape: "octagon" },
-  Procedure: { colour: "#7d6a8c", shape: "octagon" },
-  Agent: { colour: "#4b525a", shape: "octagon" },
-  Handoff: { colour: "#8a5a6e", shape: "round-tag" },
-  Action: { colour: "#7a4a5e", shape: "round-tag" },
-  Conversation: { colour: "#5b6b8a", shape: "octagon" },
-  Message: { colour: "#7a879e", shape: "octagon" },
+  Service: { colour: "#767c64", shape: "round-rectangle" },   // dusty olive
+  Team: { colour: "#2f3228", shape: "hexagon" },              // dusty olive 200
+  Person: { colour: "#c65741", shape: "ellipse" },            // almond silk 300
+  Deployment: { colour: "#757759", shape: "tag" },            // ash grey 300
+  Incident: { colour: "#ff1053", shape: "triangle" },         // hot fuchsia
+  Decision: { colour: "#873828", shape: "diamond" },          // almond silk 200
+  Document: { colour: "#666666", shape: "rectangle" },        // black 700
+  Episode: { colour: "#6c001f", shape: "octagon" },           // hot fuchsia 200
+  Lesson: { colour: "#441c14", shape: "octagon" },            // almond silk 100
+  Procedure: { colour: "#a2002e", shape: "octagon" },         // hot fuchsia 300
+  Agent: { colour: "#333333", shape: "octagon" },             // black 600
+  Handoff: { colour: "#474b3c", shape: "round-tag" },         // dusty olive 300
+  Action: { colour: "#d8003d", shape: "round-tag" },          // hot fuchsia 400
+  Conversation: { colour: "#4e4f3c", shape: "octagon" },      // ash grey 200
+  Message: { colour: "#757759", shape: "octagon" },           // ash grey 300
 };
 
-export const styleOf = (label: string) => LABEL_STYLE[label] ?? { colour: "#9aa1aa", shape: "ellipse" as Shape };
+export const styleOf = (label: string) => LABEL_STYLE[label] ?? { colour: "#999999", shape: "ellipse" as Shape };
 
 const PREFIX_LABEL: Record<string, string> = {
   svc: "Service", per: "Person", team: "Team", dep: "Deployment", inc: "Incident", adr: "Decision", dec: "Decision",

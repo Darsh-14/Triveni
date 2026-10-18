@@ -1,29 +1,31 @@
 @import "tailwindcss";
 
-/* Design tokens (notes/design-direction.md: ink on paper, one accent, colour only for meaning).
+/* Design tokens (notes/design-direction.md: mono base, one neon accent, colour only for meaning).
    Components use the Tailwind names (bg-panel, text-ink-3, border-line, ...); a dark theme only has to
    redefine the variables in :root. */
 :root {
-  --bg: #f3f4f5;
+  /* coolors "mono neon picnic": white, black, dusty olive #767c64, ash grey #b9baa3, hot fuchsia #ff1053, almond silk #efd0ca */
+  --bg: #f1f1ec;          /* ash grey 900 */
   --panel: #ffffff;
-  --raised: #eceef0;
-  --line: #dcdfe3;
-  --line-strong: #c1c6cc;
-  --ink: #16191d;
-  --ink-2: #3a4048;
-  --ink-3: #5c636c;
-  --accent: #24548f;      /* focus, selection, primary action: nothing else */
-  --accent-soft: #e7edf5;
-  --ok: #2f6b3a;
-  --ok-soft: #eaf2ea;
-  --warn: #8a5600;
-  --warn-soft: #f7efe0;
-  --bad: #b42318;
-  --bad-soft: #fbeceb;
+  --raised: #e4e6df;      /* dusty olive 900 */
+  --line: #d4d5c7;        /* ash grey 700 */
+  --line-strong: #b9baa3; /* ash grey */
+  --ink: #181914;         /* dusty olive 100 */
+  --ink-2: #2f3228;       /* dusty olive 200 */
+  --ink-3: #5f6450;       /* dusty olive 400, 5.6:1 on the page */
+  --accent: #ff1053;      /* hot fuchsia: focus, selection, highlighted lines; never small text (3.6:1) */
+  --accent-ink: #b8003a;  /* the accent as text, 6.5:1 on white */
+  --accent-soft: #ffe5ec;
+  --ok: #474b3c;          /* dusty olive 300 */
+  --ok-soft: #e4e6df;
+  --warn: #873828;        /* almond silk 200 */
+  --warn-soft: #f8ece9;   /* almond silk 800 */
+  --bad: #a2002e;         /* hot fuchsia 300 */
+  --bad-soft: #ffcfdd;    /* hot fuchsia 900 */
 }
 
 @theme inline {
-  --font-sans: var(--font-plex-sans);
+  --font-sans: var(--font-heros);
   --font-mono: var(--font-plex-mono);
   --color-bg: var(--bg);
   --color-panel: var(--panel);
@@ -35,6 +37,7 @@
   --color-ink-3: var(--ink-3);
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
   --color-warn: var(--warn);
@@ -46,7 +49,7 @@
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: var(--font-plex-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-heros), "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 /* numbers line up in tables, timelines and counts */

@@ -1,5 +1,6 @@
 "use client";
 
+import { Check, X } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Step, Track } from "@/lib/api";
 import { Chip, EntityChip, toneOf } from "./ui";
@@ -110,8 +111,8 @@ const RENDER: Record<string, (d: Rec, c: Ctx) => ReactNode> = {
         {arr(ep.procedures).map((p) => (
           <Row key={str(p.id)} k="Procedure">
             <EntityChip id={str(p.id)} name={str(p.name)} onOpen={c.onOpen} onHover={c.onHover} />
-            <Chip tone="ok">{str(p.success_count)} ✓</Chip>
-            <Chip tone={Number(p.fail_count) ? "bad" : "muted"}>{str(p.fail_count)} ✗</Chip>
+            <Chip tone="ok" title="Worked"><Check size={12} aria-label="worked" />{str(p.success_count)}</Chip>
+            <Chip tone={Number(p.fail_count) ? "bad" : "muted"} title="Failed"><X size={12} aria-label="failed" />{str(p.fail_count)}</Chip>
           </Row>
         ))}
         {arr(ep.lessons).slice(0, 2).map((l) => (
@@ -194,7 +195,7 @@ const RENDER: Record<string, (d: Rec, c: Ctx) => ReactNode> = {
         {arr(impact.proposed_actions).length > 0 && (
           <Row k="Action">
             {arr(impact.proposed_actions).map((a) => <Chip key={str(a.id)} tone={toneOf(str(a.status))}>{str(a.kind)} · {str(a.status)}</Chip>)}
-            <button onClick={c.onApprovals} className="text-xs font-medium text-accent hover:underline">Review</button>
+            <button onClick={c.onApprovals} className="text-xs font-medium text-accent-ink hover:underline">Review</button>
           </Row>
         )}
       </Box>
@@ -207,7 +208,7 @@ const RENDER: Record<string, (d: Rec, c: Ctx) => ReactNode> = {
         <EntityChip id={str(d.target)} onOpen={c.onOpen} onHover={c.onHover} />
         <Chip tone={toneOf(str(d.status))}>{str(d.status)}</Chip>
         {((d.blocked_by as string[]) ?? []).map((b) => <EntityChip key={b} id={b} onOpen={c.onOpen} onHover={c.onHover} />)}
-        {d.status === "proposed" && <button onClick={c.onApprovals} className="text-xs font-medium text-accent hover:underline">Review</button>}
+        {d.status === "proposed" && <button onClick={c.onApprovals} className="text-xs font-medium text-accent-ink hover:underline">Review</button>}
       </Row>
     </Box>
   ),
@@ -218,7 +219,7 @@ const RENDER: Record<string, (d: Rec, c: Ctx) => ReactNode> = {
         {d.id ? <EntityChip id={str(d.id)} onOpen={c.onOpen} onHover={c.onHover} /> : null}
         {d.to ? <EntityChip id={str(d.to)} onOpen={c.onOpen} onHover={c.onHover} /> : null}
         {d.about ? <EntityChip id={str(d.about)} onOpen={c.onOpen} onHover={c.onHover} /> : null}
-        <button onClick={c.onApprovals} className="text-xs font-medium text-accent hover:underline">Open</button>
+        <button onClick={c.onApprovals} className="text-xs font-medium text-accent-ink hover:underline">Open</button>
       </Row>
     </Box>
   ),

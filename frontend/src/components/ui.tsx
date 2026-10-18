@@ -24,7 +24,7 @@ const TONE = {
   ok: "bg-ok-soft text-ok",
   warn: "bg-warn-soft text-warn",
   bad: "bg-bad-soft text-bad",
-  info: "bg-accent-soft text-accent",
+  info: "bg-accent-soft text-accent-ink",
   muted: "bg-raised text-ink-2",
 } as const;
 export type Tone = keyof typeof TONE;
@@ -86,7 +86,7 @@ export function IconButton({ label, onClick, active, children, disabled }: {
 }) {
   return (
     <button type="button" title={label} aria-label={label} aria-pressed={active} onClick={onClick} disabled={disabled}
-            className={`grid h-8 w-8 place-items-center rounded text-ink-2 hover:bg-raised disabled:opacity-40 ${active ? "bg-accent-soft text-accent" : ""}`}>
+            className={`grid h-8 w-8 place-items-center rounded text-ink-2 hover:bg-raised disabled:opacity-40 ${active ? "bg-accent-soft text-accent-ink" : ""}`}>
       {children}
     </button>
   );

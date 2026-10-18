@@ -12,7 +12,7 @@ import type { ProgressEvent, Step } from "@/lib/api";
 const OUTCOME: Record<string, { label: string; cls: string; title: string }> = {
   unknown_entity: { label: "unknown name", cls: "text-bad", title: "The name matches nothing in this graph; the tool did not run" },
   not_in_graph: { label: "absent", cls: "text-warn", title: "The entity exists; the fact asked about is not in the graph" },
-  from_memory: { label: "from memory", cls: "text-accent", title: "Answered from earlier episodes" },
+  from_memory: { label: "from memory", cls: "text-accent-ink", title: "Answered from earlier episodes" },
   recorded: { label: "recorded", cls: "text-ok", title: "Written to the graph" },
 };
 
