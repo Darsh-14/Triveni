@@ -68,6 +68,16 @@ flowchart LR
   Person -- APPROVED --> Action
 ```
 
+**The live graph** (screenshots of the app on the seeded `acme` tenant, read from FalkorDB)
+
+![Overview: services folded into their owning teams, lines are DEPENDS_ON between them](docs/img/graph-overview.png)
+
+*Overview.* Each team is one node with its service count; lines are the `DEPENDS_ON` edges between their services. Unowned services (`pdf-renderer-v1`, `legacy-fax-gateway`) stand alone. Click a team to open it, click any node to load its neighbours.
+
+![blast_radius on payments-api: the path is lit inside the whole map](docs/img/graph-answer.png)
+
+*An answer.* `blast_radius` on `payments-api`: the services that depend on it within 3 hops, its owner and the on-call engineer light up inside the full map, built only from the tool's returned path.
+
 **Nodes**
 
 | Group | Labels (key properties) |
