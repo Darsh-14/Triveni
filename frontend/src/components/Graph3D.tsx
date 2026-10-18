@@ -173,12 +173,14 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
       try {
         g = new ForceGraph3D(host.current, { controlType: "orbit" }) as unknown as ForceGraph3DInstance<N, L>;
       } catch { onUnavailable?.(); return; }
-      g.backgroundColor(PAGE).showNavInfo(false).enableNodeDrag(false).linkOpacity(0.85)
+      g.backgroundColor(PAGE).showNavInfo(false).enableNodeDrag(true).linkOpacity(0.85)
         .nodeLabel(() => "") // our own labels; no browser tooltip on top of them
         .linkLabel((l: L) => l.type)
         .linkDirectionalArrowLength(5).linkDirectionalArrowRelPos(1)
         .linkCurvature(0.22).linkCurveRotation((l: L) => (hashOf(l.id) % 628) / 100)
-        .linkDirectionalParticleWidth(1.8).linkDirectionalParticleSpeed(0.006)
+        .linkDirectionalParticleWidth(1.4).linkDirectionalParticleSpeed(0.006)
+        // drag a node to stretch the map: it stays where dropped, and its curved lines bend with it
+        .onNodeDragEnd((n: N) => { const m = n as N & { x?: number; y?: number; z?: number; fx?: number; fy?: number; fz?: number }; m.fx = m.x; m.fy = m.y; m.fz = m.z; })
         .warmupTicks(30).cooldownTicks(140)
         .onDagError(() => { /* a cycle: the tree layout places what it can, the rest stays force-directed */ })
         .onNodeHover((n: N | null) => { setHoverNode(n?.id ?? null); if (host.current) host.current.style.cursor = n ? "pointer" : ""; })
@@ -419,10 +421,10 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
         if (l.type === "OWNS" && overview) return OWNS_LINK;
         return anyLit ? LINK_FAINT : LINK;
       })
-      .linkWidth((l: L) => (state.litLinks.has(l.id) ? (pinned?.id === l.id ? 2.6 : 2) : state.faded?.(l.id) ? 0.4
-        : Math.min(1 + ((lineCount.get(l.id) ?? 1) - 1) * 0.45, 4.5)))
-      .linkDirectionalParticles((l: L) => (state.litLinks.has(l.id) ? 3 : 0))
-      .linkDirectionalParticleColor(() => ACCENT)
+      .linkWidth((l: L) => (state.litLinks.has(l.id) ? (pinned?.id === l.id ? 1.8 : 1.4) : state.faded?.(l.id) ? 0.3
+        : Math.min(0.6 + ((lineCount.get(l.id) ?? 1) - 1) * 0.3, 3)))
+      .linkDirectionalParticles((l: L) => (state.litLinks.has(l.id) ? 3 : state.faded?.(l.id) ? 0 : 1)) // flow shows direction on every line
+      .linkDirectionalParticleColor((l: L) => (state.litLinks.has(l.id) ? ACCENT : "#dfe6ff"))
       .linkDirectionalArrowColor((l: L) => (state.litLinks.has(l.id) ? ACCENT : l.old && compare !== "before" ? OLD : LINK));
   }, [state, ready, hiddenLabels, compare, overview, pinned, lineCount]);
 
