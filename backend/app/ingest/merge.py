@@ -118,6 +118,7 @@ def apply(graph: Graph, doc: RawDoc, extraction: Extraction) -> dict:
                     "ON CREATE SET r.source_doc = $d", {"p": author, "d": doc.id})
     for node_id, label in {v for v in resolved.values()}:
         rel = "MENTIONS"
+        schema.validate_edge(rel, "Document", label, {"source_doc": doc.id})  # same check as every other edge
         graph.query(f"MATCH (d:Document {{id: $d}}), (n:{label} {{id: $n}}) MERGE (d)-[r:{rel}]->(n) "
                     f"ON CREATE SET r.source_doc = $d", {"d": doc.id, "n": node_id})
         if doc.kind in EVIDENCE_KINDS and label in ("Incident", "Decision"):

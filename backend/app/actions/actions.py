@@ -10,10 +10,11 @@ from pathlib import Path
 
 from falkordb import Graph
 
+from backend.app.graph import schema
 from backend.app.memory.conversation import new_id, now
 from backend.app.actions.gate import action_gate, current_decisions
 
-KINDS = ("create_ticket", "notify_owner", "change_retry_policy", "raise_timeout", "rerun_without_reconciliation")
+KINDS = tuple(sorted(schema.ACTION_KINDS))  # one list, declared in the schema
 OUTBOX = Path(__file__).resolve().parents[3] / "data" / "outbox"
 
 PROPOSE = """

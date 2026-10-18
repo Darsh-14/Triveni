@@ -30,7 +30,7 @@ NODE_LABELS: dict[str, tuple[str, ...]] = {
 }
 
 DOCUMENT_KINDS = {"runbook", "postmortem", "adr", "ticket", "chat", "registry"}
-ACTION_KINDS = {"create_ticket", "notify_owner", "change_retry_policy"}
+ACTION_KINDS = {"create_ticket", "notify_owner", "change_retry_policy", "raise_timeout", "rerun_without_reconciliation"}
 ACTION_STATUSES = {"proposed", "approved", "rejected", "blocked", "executed"}
 HANDOFF_STATUSES = {"open", "claimed", "done"}
 
@@ -74,7 +74,7 @@ EDGE_TYPES: dict[str, EdgeType] = {
     "GOVERNS": _e("Decision", "Service", EVENT),
     "SUPERSEDES": _e("Decision", "Decision", EVENT),
     "EVIDENCE_FOR": _e("Document", "Incident|Decision", EVENT),
-    "MENTIONS": _e("Document", "Person|Service|Incident|Decision", EVENT),
+    "MENTIONS": _e("Document", "Person|Service|Team|Incident|Decision", EVENT),
     "WROTE": _e("Person", "Document", EVENT),
     # System (written by agents)
     "HAS_MESSAGE": _e("Conversation", "Message", SYSTEM),

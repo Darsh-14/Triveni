@@ -7,7 +7,7 @@ Built for **Graph Hacks: Context for AI Agents** (WeMakeDevs × FalkorDB). Track
 - Track 02: Agent Memory and Coordination
 - Track 03: Company Brain
 
-> Status: in progress during the event window (Oct 15–18, 2026).
+All code was written during the event window (Oct 15–18, 2026).
 
 ## Why a graph
 Incident questions are about connections: what depends on this service, who owns it, what changed, which decision constrains us, who fixed this before. Each one is a traversal, and none is a text lookup. Every Triveni answer includes the Cypher it ran, the path it found, and the source documents behind it.
@@ -25,18 +25,76 @@ docker compose up -d falkordb                      # or use FalkorDB Cloud, see 
 python -m venv .venv && . .venv/bin/activate       # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 cp .env.example .env
-python -m backend.scripts.seed --tenant acme --seed 42
-python -m backend.scripts.seed --tenant beta --seed 7
+python -m backend.scripts.demo_reset                # seeds acme + beta, replays cached ingestion (no model key needed)
 pytest -q
-uvicorn backend.app.main:app --reload            # API on :8000
+uvicorn backend.app.main:app --port 8000          # API on :8000 (on Windows, avoid --reload)
 npm --prefix frontend install && npm --prefix frontend run dev   # UI on :3001
 python -m backend.app.agents.triage "payments-api is failing, what's affected and who do I page?" --tenant acme
 ```
 
 ## Graph model
-One FalkorDB graph per tenant (`tenant_<name>`). Full model: [notes/graph-model.md](notes/graph-model.md).
+One FalkorDB graph per tenant (`tenant_acme`, `tenant_beta`): a tenant is selected per request and no query can cross graphs. The schema is fixed and enforced in code (`backend/app/graph/schema.py`): seed and ingestion validate every node and edge before writing. Full rationale: [notes/graph-model.md](notes/graph-model.md). Demo tenant `acme`: about 360 nodes and 1,500 edges.
 
-_TODO: diagram + node/edge tables._
+```mermaid
+flowchart LR
+  Person -- MEMBER_OF --> Team
+  Team -- OWNS --> Service
+  Person -- ON_CALL_FOR --> Service
+  Service -- DEPENDS_ON --> Service
+  Person -- AUTHORED --> Deployment -- DEPLOYED_TO --> Service
+  Incident -- AFFECTED --> Service
+  Incident -- CAUSED_BY --> Deployment
+  Person -- RESOLVED --> Incident
+  Person -- MADE --> Decision -- GOVERNS --> Service
+  Decision -- SUPERSEDES --> Decision
+  Document -- EVIDENCE_FOR --> Incident
+  Document -- EVIDENCE_FOR --> Decision
+  Person -- WROTE --> Document
+  Agent -- RAN --> Episode -- INVOLVED --> Service
+  Episode -- LEARNED --> Lesson
+  Episode -- USED --> Procedure -- FOR --> Service
+  Conversation -- HAS_MESSAGE --> Message -- NEXT --> Message
+  Agent -- CREATED --> Handoff -- ABOUT --> Incident
+  Action -- TARGETS --> Service
+  Action -- BLOCKED_BY --> Decision
+  Person -- APPROVED --> Action
+```
+
+**Nodes**
+
+| Group | Labels (key properties) |
+|---|---|
+| Org | `Person {id, name, role}`, `Team {id, name}`, `Service {id, name, tier, lang}` |
+| Change and ops | `Deployment {id, version, ts, status}`, `Incident {id, title, severity, ts_open, ts_close, summary}` |
+| Knowledge | `Decision {id, title, ts, status, rationale, forbids[]}`, `Document {id, title, kind, text, ts, source}`; kind is runbook, postmortem, adr, ticket, chat or registry |
+| Agents and memory | `Agent`, `Conversation`, `Message {seq}`, `Episode {question, outcome}`, `Lesson {confidence, last_reinforced}`, `Procedure {steps, success_count, fail_count}` |
+| Coordination and actions | `Handoff {status: open, claimed, done; claimed_by}`, `Action {kind, status: proposed, approved, rejected, blocked, executed}` |
+
+Ids are stable and prefixed (`svc:payments-api`, `per:priya-nair`, `inc:0042`, `adr:019`). Times are ISO-8601 UTC strings. Maps are stored as JSON strings, because FalkorDB properties cannot hold maps.
+
+**Edges, in four categories**
+
+| Category | Types | Properties | Why |
+|---|---|---|---|
+| State (can change) | `MEMBER_OF`, `OWNS`, `ON_CALL_FOR`, `DEPENDS_ON` | `valid_from`, `valid_to` (absent = current), `source_doc`, `ended_by` | A contradicting document ends the old edge and adds a new one; history is never deleted. Read tools filter `valid_to IS NULL` |
+| Event (immutable) | `AUTHORED`, `DEPLOYED_TO`, `AFFECTED`, `CAUSED_BY`, `RESOLVED`, `MADE`, `GOVERNS`, `SUPERSEDES`, `EVIDENCE_FOR`, `MENTIONS`, `WROTE` | `source_doc` | Every fact names the document it came from |
+| System (written by agents) | `HAS_MESSAGE`, `NEXT`, `WITH`, `RAN`, `INVOLVED`, `LEARNED`, `USED`, `FOR`, `CREATED`, `TO`, `ABOUT`, `TARGETS`, `PROPOSED_IN`, `APPROVED`, `BLOCKED_BY` | timestamps | Memory, coordination and actions live in the same graph as the facts they are about |
+| Derived (rebuilt) | `KNOWS {weight}`, `KNOWN_BY`, `RESPONSIBLE_FOR` | `derived: true` | Algorithm procedures cannot filter on `valid_to`, so PageRank, betweenness and WCC run on projections rebuilt from current facts after every seed and ingest |
+
+## How the graph shapes what the agents do
+The graph is the agents' context layer, not a store they occasionally read. Remove FalkorDB and nothing below has an answer path: every tool, memory read, handoff and action check is a Cypher query against the tenant graph.
+
+| Decision the agent makes | What decides it in the graph |
+|---|---|
+| Which entity a question is about | Names are resolved against the graph's own nodes before any tool runs; an unknown name stops the tool and returns suggestions (`graph/resolve.py`) |
+| Which tools run (no model) | The rules planner spots services, people, teams, incidents and decisions in the question from the graph and picks tools by entity type |
+| What it says | Every answer is checked by code against the graph and this run's tool results; an answer naming anything else is replaced by the tool results (`agents/verify.py`) |
+| Whether an action may be proposed | A current `Decision` that `GOVERNS` the target and `forbids` the action blocks it, recorded with a `BLOCKED_BY` edge |
+| Who to page and what breaks | Variable-length `DEPENDS_ON` traversal plus current `OWNS` and `ON_CALL_FOR` edges |
+| What it remembers | `Episode` nodes reached through shared `Service`, `Incident` and `Person` neighbours; procedures carry success and failure counts; lessons decay with age |
+| What the second agent works on | Only `Handoff` nodes: the remediation agent claims one atomically (`open` to `claimed` in one statement) and has no other channel |
+| What changed and who must hear | An ingested document that ends a `State` edge triggers a change-impact report and an approval-gated `notify_owner` |
+| Which data it can see | The tenant picks the graph; tools never receive a tenant argument |
 
 ## Track 01: Act on connected data
 | Key focus | Feature |
