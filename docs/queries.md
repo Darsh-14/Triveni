@@ -470,12 +470,15 @@ MATCH (p:Person {id: $id})-[k:KNOWS]->(s:Service) RETURN s.id, s.name, k.weight 
 ```
 
 ### recent: newest deployments, incidents, decisions and actions **[01] [03]**
-`backend/app/tools/recent.py`. For questions that name no entity ("who approved the most recent change?", "last deploy on payments-api", "what awaits approval?"). Each kind is one fixed query ordered by its own timestamp. The optional service filter is a fixed `{name: $service}` pattern chosen by code, and the name stays a parameter. Deployments carry an author, not an approver; approvals exist only on Actions (APPROVED edge), and the explanation says so rather than inventing an approver.
+`backend/app/tools/recent.py`. For questions that name no entity ("who approved the most recent change?", "last deploy on payments-api", "what awaits approval?"). Each kind is one fixed query ordered by its own timestamp. Each deployment also carries its reach: every service that depends on the deployed one within 3 hops over current DEPENDS_ON edges. A routine email-sender deploy reaches 35 services; payments-api 2.14.0 reaches 5. The optional service filter is a fixed `{name: $service}` pattern chosen by code, and the name stays a parameter. Deployments carry an author, not an approver; approvals exist only on Actions (APPROVED edge), and the explanation says so rather than inventing an approver.
 ```cypher
 MATCH (p:Person)-[a:AUTHORED]->(d:Deployment)-[:DEPLOYED_TO]->(s:Service {name: $service})
+WITH p, a, d, s ORDER BY d.ts DESC LIMIT $limit
 OPTIONAL MATCH (i:Incident)-[:CAUSED_BY]->(d)
-RETURN d.id, d.version, d.ts, d.status, s.id, s.name, p.id, p.name, collect(DISTINCT i.id), a.source_doc
-ORDER BY d.ts DESC LIMIT $limit
+WITH p, a, d, s, collect(DISTINCT i.id) AS caused
+OPTIONAL MATCH reach=(x:Service)-[:DEPENDS_ON*1..3]->(s) WHERE all(r IN relationships(reach) WHERE r.valid_to IS NULL)
+RETURN d.id, d.version, d.ts, d.status, s.id, s.name, p.id, p.name, caused, a.source_doc, collect(DISTINCT x.id)
+ORDER BY d.ts DESC
 
 MATCH (i:Incident)-[f:AFFECTED]->(s:Service {name: $service})
 OPTIONAL MATCH (p:Person)-[:RESOLVED]->(i)
@@ -496,7 +499,7 @@ ORDER BY coalesce(a.decided_ts, a.ts) DESC LIMIT $limit
 ```
 
 ### find_services: attribute filters over services **[01] [03]**
-`backend/app/tools/find_services.py`. One fixed, parameterized query covers every combination of tier, language, owning team, missing owner and missing on-call. A filter left out is passed as null and switched off with `$x IS NULL OR ...`, so no query text is ever built from input. Only current OWNS and ON_CALL_FOR edges count. The rules planner (no model) routes questions like "which tier-1 services have nobody on call?" here.
+`backend/app/tools/find_services.py`. One fixed, parameterized query covers every combination of tier, language, owning team, missing owner and missing on-call. A filter left out is passed as null and switched off with `$x IS NULL OR ...`, so no query text is ever built from input. Only current OWNS and ON_CALL_FOR edges count. Services are ranked by transitive dependents (3 hops of current DEPENDS_ON), not direct ones, so the riskiest gaps come first. The rules planner (no model) routes questions like "which tier-1 services have nobody on call?" here.
 ```cypher
 MATCH (s:Service)
 WHERE ($tier IS NULL OR s.tier = $tier) AND ($lang IS NULL OR toLower(s.lang) = toLower($lang))
@@ -506,9 +509,9 @@ WITH s, collect(DISTINCT t) AS teams, collect(DISTINCT p) AS oncall
 WHERE ($team IS NULL OR any(x IN teams WHERE x.id = $team))
   AND ($has_owner IS NULL OR (size(teams) > 0) = $has_owner)
   AND ($has_on_call IS NULL OR (size(oncall) > 0) = $has_on_call)
-OPTIONAL MATCH (d:Service)-[r:DEPENDS_ON]->(s) WHERE r.valid_to IS NULL
+OPTIONAL MATCH reach=(d:Service)-[:DEPENDS_ON*1..3]->(s) WHERE all(r IN relationships(reach) WHERE r.valid_to IS NULL)
 RETURN s.id, s.name, s.tier, s.lang, [x IN teams | x.id], [x IN teams | x.name], [x IN oncall | x.id],
-       [x IN oncall | x.name], count(d) AS dependents
+       [x IN oncall | x.name], count(DISTINCT d) AS dependents
 ORDER BY s.tier, dependents DESC, s.id
 LIMIT $limit
 ```

@@ -16,9 +16,9 @@ WITH s, collect(DISTINCT t) AS teams, collect(DISTINCT p) AS oncall
 WHERE ($team IS NULL OR any(x IN teams WHERE x.id = $team))
   AND ($has_owner IS NULL OR (size(teams) > 0) = $has_owner)
   AND ($has_on_call IS NULL OR (size(oncall) > 0) = $has_on_call)
-OPTIONAL MATCH (d:Service)-[r:DEPENDS_ON]->(s) WHERE r.valid_to IS NULL
+OPTIONAL MATCH reach=(d:Service)-[:DEPENDS_ON*1..3]->(s) WHERE all(r IN relationships(reach) WHERE r.valid_to IS NULL)
 RETURN s.id, s.name, s.tier, s.lang, [x IN teams | x.id], [x IN teams | x.name], [x IN oncall | x.id],
-       [x IN oncall | x.name], count(d) AS dependents
+       [x IN oncall | x.name], count(DISTINCT d) AS dependents
 ORDER BY s.tier, dependents DESC, s.id
 LIMIT $limit
 """
@@ -26,7 +26,8 @@ LIMIT $limit
 
 @tool(
     name="find_services",
-    description="Services matching attribute filters, each with its current owner, on-call and number of dependents: "
+    description="Services matching attribute filters, each with its current owner, on-call and how many services depend on "
+                "it within 3 hops (its blast radius), riskiest first: "
                 "tier (1-3), lang, owning team, has_owner, has_on_call. Use for 'which tier-1 services have nobody on "
                 "call', 'kotlin services owned by Ledger', 'services without an owner'. All filters are optional.",
     input_schema={
@@ -58,7 +59,7 @@ def find_services(graph, tier: int | None = None, lang: str | None = None, team:
             paths.append({"nodes": [sid], "edges": []})
     filters = ", ".join(f"{k}={v}" for k, v in params.items() if v is not None and k != "limit") or "no filter"
     listed = "; ".join(f"{i['name']} (tier {i['tier']}, {i['lang']}, owner {', '.join(i['owner_names']) or 'none'}, "
-                       f"on call {', '.join(i['on_call_names']) or 'nobody'}, {i['dependents']} dependents)" for i in items[:10])
+                       f"on call {', '.join(i['on_call_names']) or 'nobody'}, {i['dependents']} dependents within 3 hops)" for i in items[:10])
     return ToolResult(
         data={"filters": {k: v for k, v in params.items() if v is not None}, "services": items},
         cypher=FIND.strip(), params=params, paths=paths,

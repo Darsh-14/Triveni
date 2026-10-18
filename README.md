@@ -96,6 +96,16 @@ The graph is the agents' context layer, not a store they occasionally read. Remo
 | What changed and who must hear | An ingested document that ends a `State` edge triggers a change-impact report and an approval-gated `notify_owner` |
 | Which data it can see | The tenant picks the graph; tools never receive a tenant argument |
 
+### How deep the graph work goes
+Measured from the Cypher each tool runs on the demo tenant.
+
+| Kind of graph work | Tools | What only a graph gives |
+|---|---|---|
+| Variable-length traversal (3–4 hops, current edges only) | `blast_radius`, `shortest_path`, `recent` (each deploy's reach), `find_services` (transitive dependents) | A routine email-sender deploy reaches 35 services within 3 hops, while payments-api 2.14.0 reaches 5; unowned pdf-renderer-v1 has 31 dependents |
+| Graph algorithms | `critical_services` (PageRank), `key_people` (betweenness), `find_orphans` (WCC), `what_if` (`GRAPH.COPY`, then algorithms rerun on the copy) | Global structure: who bridges teams, what is central, what nobody is responsible for |
+| Neighbourhood reasoning (2 hops, derived edges) | `recall` (episodes through shared entities), `similar_incidents`, `who_knows` (KNOWS built from multi-hop evidence), `decision_trail` (SUPERSEDES chains) | Memory found by structure rather than text; expertise derived from what people actually did |
+| Direct lookups (1 hop) | `owner_of`, `describe`, `why_not`, `team_services` | Current facts with their sources and history; deliberately simple |
+
 ## Track 01: Act on connected data
 | Key focus | Feature |
 |---|---|

@@ -144,6 +144,9 @@ def test_recent_answers_questions_that_name_no_entity(loaded):
     r = run_tool(T, "recent", {"kind": "deployments", "service": "Payments API", "limit": 3})
     assert [i["version"] for i in r.data["items"]] == ["2.14.0", "2.13.0", "2.12.0"]
     assert r.data["items"][2]["caused"] == ["inc:0042"] and "approvals are recorded only on actions" in r.explanation
+    # each deploy carries its reach: services depending on the deployed one within 3 hops (the blast radius)
+    blast = {a["id"] for a in run_tool(T, "blast_radius", {"service": "payments-api"}).data["affected"]}
+    assert set(r.data["items"][0]["reach"]) == blast
     assert run_tool(T, "recent", {"kind": "incidents", "limit": 1}).data["items"][0]["id"] == "inc:0057"
     assert run_tool(T, "recent", {"kind": "deployments", "service": "paymnts"}).outcome == "unknown_entity"
 

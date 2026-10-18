@@ -4,6 +4,8 @@ Answers questions that name no entity: "who approved the most recent change?", "
 SEV1?", "what decisions were made recently?", "what is waiting for approval?". Each kind is one fixed, parameterized
 query ordered by its own timestamp; an optional service narrows it. A "change" is a deployment or an approved action;
 the graph records approvals only on actions, and the explanation says so instead of inventing an approver.
+Each deployment also carries its reach: every service that depends on the deployed one within 3 hops, over current
+DEPENDS_ON edges, so "what changed recently?" also says how far each change can spread.
 """
 from backend.app.tools.base import ToolResult, edge_ref, ro, tool
 
@@ -13,11 +15,15 @@ KINDS = ("deployments", "incidents", "decisions", "actions")
 ANY, ONE = "", " {name: $service}"
 
 QUERIES = {
+    # each recent deploy with its reach: every service that depends on the deployed one within 3 hops (current edges)
     "deployments": """
 MATCH (p:Person)-[a:AUTHORED]->(d:Deployment)-[:DEPLOYED_TO]->(s:Service%s)
+WITH p, a, d, s ORDER BY d.ts DESC LIMIT $limit
 OPTIONAL MATCH (i:Incident)-[:CAUSED_BY]->(d)
-RETURN d.id, d.version, d.ts, d.status, s.id, s.name, p.id, p.name, collect(DISTINCT i.id), a.source_doc
-ORDER BY d.ts DESC LIMIT $limit""",
+WITH p, a, d, s, collect(DISTINCT i.id) AS caused
+OPTIONAL MATCH reach=(x:Service)-[:DEPENDS_ON*1..3]->(s) WHERE all(r IN relationships(reach) WHERE r.valid_to IS NULL)
+RETURN d.id, d.version, d.ts, d.status, s.id, s.name, p.id, p.name, caused, a.source_doc, collect(DISTINCT x.id)
+ORDER BY d.ts DESC""",
     "incidents": """
 MATCH (i:Incident)-[f:AFFECTED]->(s:Service%s)
 OPTIONAL MATCH (p:Person)-[:RESOLVED]->(i)
@@ -65,11 +71,13 @@ def recent(graph, kind: str, service: str | None = None, limit: int = 5) -> Tool
     items, paths, sources = [], [], set()
     for row in ro(graph, q, params):
         if kind == "deployments":
-            did, ver, ts, status, sid, sname, pid, pname, caused, src = row
+            did, ver, ts, status, sid, sname, pid, pname, caused, src, reach = row
+            reach = sorted(x for x in reach if x)
             items.append({"id": did, "version": ver, "ts": ts, "status": status, "service": sid, "author": pid,
-                          "author_name": pname, "caused": [c for c in caused if c]})
+                          "author_name": pname, "caused": [c for c in caused if c], "reach": reach})
             paths.append({"nodes": [pid, did, sid], "edges": [edge_ref("AUTHORED", pid, did), edge_ref("DEPLOYED_TO", did, sid)]})
-            line = f"{sname} {ver} by {pname} ({ts[:10]}, {status}" + (f"; caused {', '.join(items[-1]['caused'])}" if items[-1]["caused"] else "") + ")"
+            line = (f"{sname} {ver} by {pname} ({ts[:10]}, {status}; reaches {len(reach)} dependent service(s) within 3 hops"
+                    + (f"; caused {', '.join(items[-1]['caused'])}" if items[-1]["caused"] else "") + ")")
         elif kind == "incidents":
             iid, title, sev, opened, closed, sid, sname, resolvers, causes, src = row
             items.append({"id": iid, "title": title, "severity": sev, "ts_open": opened, "ts_close": closed, "service": sid,
