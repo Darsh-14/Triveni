@@ -91,9 +91,10 @@ function GuardNotice({ guard }: { guard: Guard }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="mt-2 rounded-md border border-warn/30 bg-warn-soft px-2 py-1.5 text-xs text-warn">
-      <p>
-        <span className="font-semibold">Model draft rejected</span>: it {guard.reason}. Showing only what the graph tools
-        returned. <button onClick={() => setOpen(!open)} className="underline">{open ? "hide" : "show"} draft</button>
+      <p className="flex flex-wrap items-center gap-1.5">
+        <span className="font-semibold">Draft rejected</span>
+        <span className="text-ink-3">{guard.reason}</span>
+        <button onClick={() => setOpen(!open)} aria-expanded={open} className="ml-auto font-medium underline">Draft</button>
       </p>
       {open && <p className="mt-1 whitespace-pre-wrap text-ink-3 line-through decoration-warn/40">{guard.draft}</p>}
     </div>
