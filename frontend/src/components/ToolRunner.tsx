@@ -56,7 +56,7 @@ export default function ToolRunner({ tools, onRun, busy, initial }: {
           </label>
         ))}
       </div>
-      <button disabled={busy} className="w-full rounded bg-ink py-1.5 text-sm font-medium text-white hover:bg-ink-2 disabled:opacity-50">
+      <button disabled={busy} className="w-full rounded bg-ink py-1.5 text-sm font-medium text-on-ink hover:bg-ink-2 disabled:opacity-50">
         Run
       </button>
     </form>

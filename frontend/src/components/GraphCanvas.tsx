@@ -29,36 +29,36 @@ export const edgeKey = (e: GraphEdge) => `${e.type}:${e.source}->${e.target}`;
 const STYLE = [
   { selector: "node", style: {
       "background-color": "data(colour)", shape: "data(shape)", label: "data(label)", width: 22, height: 22,
-      "font-size": 11, color: "#2f3228", "min-zoomed-font-size": 8, "text-valign": "bottom", "text-margin-y": 4,
+      "font-size": 11, color: "#c9ccc0", "min-zoomed-font-size": 8, "text-valign": "bottom", "text-margin-y": 4,
       "text-wrap": "ellipsis", "text-max-width": "120px", "border-width": 0 } },
-  { selector: "node.root", style: { width: 30, height: 30, "border-width": 3, "border-color": "#181914", "font-weight": 600, "font-size": 11 } },
+  { selector: "node.root", style: { width: 30, height: 30, "border-width": 3, "border-color": "#f1f1ec", "font-weight": 600, "font-size": 11 } },
   { selector: "node:selected", style: { "border-width": 3, "border-color": "#ff1053", "overlay-opacity": 0 } },
   { selector: "node.hover", style: { "border-width": 3, "border-color": "#ff1053", width: 30, height: 30, "z-index": 20 } },
   { selector: "edge", style: {
-      width: 1.5, "line-color": "#a6a88f", "target-arrow-color": "#a6a88f", "target-arrow-shape": "triangle",
-      "curve-style": "bezier", "arrow-scale": 0.8, label: "data(label)", "font-size": 10, "font-family": "IBM Plex Mono, monospace", color: "#5f6450",
-      "min-zoomed-font-size": 7, "text-background-color": "#ffffff", "text-background-opacity": 0.9,
+      width: 1.5, "line-color": "#5f6450", "target-arrow-color": "#5f6450", "target-arrow-shape": "triangle",
+      "curve-style": "bezier", "arrow-scale": 0.8, label: "data(label)", "font-size": 10, "font-family": "IBM Plex Mono, monospace", color: "#939980",
+      "min-zoomed-font-size": 7, "text-background-color": "#151613", "text-background-opacity": 0.9,
       "text-background-padding": "1px" } },
-  { selector: "edge.overview", style: { label: "", width: 1, "line-color": "#d4d5c7", "target-arrow-color": "#d4d5c7" } },
-  { selector: "edge.old", style: { "line-style": "dashed", "line-color": "#873828", "target-arrow-color": "#873828", color: "#873828" } },
+  { selector: "edge.overview", style: { label: "", width: 1, "line-color": "#2f3228", "target-arrow-color": "#2f3228" } },
+  { selector: "edge.old", style: { "line-style": "dashed", "line-color": "#da9384", "target-arrow-color": "#da9384", color: "#da9384" } },
   // team grouping (overview): a team is a box around the services it owns; collapsed it is one node
   { selector: "node:parent", style: {
-      shape: "rectangle", "background-color": "#181914", "background-opacity": 0.02, "border-width": 1,
-      "border-color": "#b9baa3", padding: "14px", label: "data(label)", "text-valign": "top",
-      "text-halign": "left", "text-margin-y": -4, "font-size": 12, "font-weight": 600, color: "#2f3228" } },
-  { selector: "node.unowned", style: { "border-style": "dashed", "border-color": "#873828",
-      "background-opacity": 0, color: "#873828" } },
-  { selector: "node.collapsed", style: { width: 40, height: 40, "font-weight": 600, color: "#2f3228" } },
-  { selector: "edge.meta", style: { width: "mapData(count, 1, 12, 1.5, 6)", "line-color": "#a6a88f", "target-arrow-color": "#a6a88f" } },
-  { selector: "edge.asof", style: { "line-style": "solid", "line-color": "#a6a88f", "target-arrow-color": "#a6a88f", color: "#5f6450", label: "data(type)" } },
+      shape: "rectangle", "background-color": "#f1f1ec", "background-opacity": 0.02, "border-width": 1,
+      "border-color": "#3b3e34", padding: "14px", label: "data(label)", "text-valign": "top",
+      "text-halign": "left", "text-margin-y": -4, "font-size": 12, "font-weight": 600, color: "#c9ccc0" } },
+  { selector: "node.unowned", style: { "border-style": "dashed", "border-color": "#da9384",
+      "background-opacity": 0, color: "#da9384" } },
+  { selector: "node.collapsed", style: { width: 40, height: 40, "font-weight": 600, color: "#c9ccc0" } },
+  { selector: "edge.meta", style: { width: "mapData(count, 1, 12, 1.5, 6)", "line-color": "#5f6450", "target-arrow-color": "#5f6450" } },
+  { selector: "edge.asof", style: { "line-style": "solid", "line-color": "#5f6450", "target-arrow-color": "#5f6450", color: "#939980", label: "data(type)" } },
   { selector: "edge.quiet", style: { label: "" } },
   { selector: "edge.quiet.lit", style: { label: "data(label)" } },
   // following a line: hovering a node lights its lines; hovering or clicking a line lights it and names it
   { selector: "edge.flow", style: { width: 2.5, "line-color": "#ff1053", "target-arrow-color": "#ff1053", "z-index": 90 } },
   { selector: "edge.hot", style: { width: 3, "line-color": "#ff1053", "target-arrow-color": "#ff1053", "arrow-scale": 1,
-      label: "data(label)", color: "#181914", "z-index": 99 } },
+      label: "data(label)", color: "#f1f1ec", "z-index": 99 } },
   { selector: "edge.pinned", style: { width: 3.5, "line-color": "#ff1053", "target-arrow-color": "#ff1053", "arrow-scale": 1.1,
-      label: "data(label)", color: "#181914", "font-size": 11, "z-index": 100 } },
+      label: "data(label)", color: "#f1f1ec", "font-size": 11, "z-index": 100 } },
   { selector: "node.end", style: { "border-width": 3, "border-color": "#ff1053", "font-weight": 600, "z-index": 100 } },
   { selector: ".faded", style: { opacity: 0.12, "text-opacity": 0 } },
   { selector: ".off", style: { display: "none" } },
@@ -186,6 +186,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
   const handlers = useRef({ onSelect, onExpand });
   useEffect(() => { handlers.current = { onSelect, onExpand }; }, [onSelect, onExpand]);
   const wasGrouped = useRef(false);
+  const relayout = useRef<() => void>(() => {}); // laid out while hidden (zero size): redo it when shown
 
   // one instance for the page lifetime
   useEffect(() => {
@@ -228,7 +229,13 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
       });
       cy.current.on("viewport", () => setTip(null));
       // the right panel opening or closing changes the canvas size: re-measure and re-fit
-      const ro = new ResizeObserver(() => { cy.current?.resize(); fitCapped(cy.current); });
+      let lastWidth = container.current.clientWidth;
+      const ro = new ResizeObserver(() => {
+        const w = container.current?.clientWidth ?? 0;
+        cy.current?.resize();
+        if (lastWidth === 0 && w > 0) relayout.current(); else fitCapped(cy.current);
+        lastWidth = w;
+      });
       ro.observe(container.current);
       observer = ro;
       setReady(true);
@@ -291,6 +298,15 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
     quietLabels(c);
     fitCapped(c);
   }, [nodes, edges, roots, ready, overview, groupedNow, collapsed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    relayout.current = () => {
+      const c = cy.current;
+      if (!c || !c.nodes().length) return;
+      c.layout(layoutOptions(layout, c, roots, c.nodes().length, groupedNow)).run();
+      fitCapped(c);
+    };
+  });
 
   // layout switch only
   useEffect(() => {

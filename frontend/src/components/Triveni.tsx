@@ -401,7 +401,7 @@ export default function Triveni() {
   return (
     <div className="flex h-screen flex-col bg-bg text-ink">
       {/* top bar */}
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-panel px-4">
+      <header className="flex h-12 shrink-0 items-center gap-3 bg-bg px-4">
         <span className="text-[15px] font-bold tracking-tight">Triveni</span>
         <span className="h-5 w-px bg-line" aria-hidden />
         <label className="flex items-center gap-1.5 text-xs text-ink-3">
@@ -432,9 +432,9 @@ export default function Triveni() {
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteOpen ? paletteItems() : []} />
 
-      <main className="flex min-h-0 flex-1">
+      <main className="flex min-h-0 flex-1 gap-1 px-2 pb-2">
         {/* icon sidebar */}
-        <nav aria-label="Sidebar" className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-line bg-panel py-2">
+        <nav aria-label="Sidebar" className="mr-1 flex w-12 shrink-0 flex-col items-center gap-1 rounded-xl border border-line bg-panel py-2">
           {([
             ["scenarios", "Scenarios", LayoutGrid],
             ["conversations", "Conversations", MessagesSquare],
@@ -449,7 +449,7 @@ export default function Triveni() {
                   className={`relative grid h-9 w-9 place-items-center rounded ${panel?.tab === "approvals" ? "bg-accent-soft text-accent-ink" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
             <ShieldCheck size={18} />
             {pendingApprovals > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-[2px] bg-warn px-0.5 text-center font-mono text-[10px] leading-4 text-white">{pendingApprovals}</span>
+              <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-[2px] bg-warn px-0.5 text-center font-mono text-[10px] leading-4 text-on-ink">{pendingApprovals}</span>
             )}
           </button>
           <button title={panes.threadOpen ? "Hide thread" : "Show thread"} aria-label={panes.threadOpen ? "Hide thread" : "Show thread"}
@@ -460,7 +460,7 @@ export default function Triveni() {
         </nav>
 
         {/* thread */}
-        <section style={{ width: panes.thread }} className={`relative shrink-0 flex-col bg-panel ${panes.threadOpen ? "flex" : "hidden"}`}>
+        <section style={{ width: panes.thread }} className={`relative shrink-0 flex-col overflow-hidden rounded-xl border border-line bg-panel ${panes.threadOpen ? "flex" : "hidden"}`}>
           {flyout && <div className="absolute inset-0 z-20 bg-ink/20" onClick={() => setFlyout(null)} aria-hidden />}
           {flyout && (
             <div className="absolute inset-x-0 top-0 z-30 max-h-[75%] overflow-auto border-b border-line bg-panel p-3">
@@ -514,7 +514,7 @@ export default function Triveni() {
                      className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3 disabled:opacity-60" />
               {conversationId && <span className="font-mono text-[11px] text-ink-3">{conversationId}</span>}
               <button disabled={!agentOnline || busy || !question.trim()} aria-label="Send"
-                      className="grid h-7 w-7 place-items-center rounded bg-ink text-white disabled:opacity-40"><Send size={14} /></button>
+                      className="grid h-7 w-7 place-items-center rounded bg-ink text-on-ink disabled:opacity-40"><Send size={14} /></button>
             </div>
           </form>
         </section>
@@ -525,7 +525,7 @@ export default function Triveni() {
         )}
 
         {/* graph */}
-        <section className="flex min-w-0 flex-1 flex-col bg-panel">
+        <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-panel">
           <div className="flex h-10 shrink-0 items-center gap-3 border-b border-line px-3 text-xs">
             <div role="tablist" className="flex rounded border border-line p-0.5">
               {([["3d", "3D"], ["2d", "2D"], ["table", "Table"]] as const).map(([v, label]) => (

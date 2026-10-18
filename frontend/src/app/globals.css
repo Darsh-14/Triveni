@@ -4,24 +4,26 @@
    Components use the Tailwind names (bg-panel, text-ink-3, border-line, ...); a dark theme only has to
    redefine the variables in :root. */
 :root {
-  /* coolors "mono neon picnic": white, black, dusty olive #767c64, ash grey #b9baa3, hot fuchsia #ff1053, almond silk #efd0ca */
-  --bg: #f1f1ec;          /* ash grey 900 */
-  --panel: #ffffff;
-  --raised: #e4e6df;      /* dusty olive 900 */
-  --line: #d4d5c7;        /* ash grey 700 */
-  --line-strong: #b9baa3; /* ash grey */
-  --ink: #181914;         /* dusty olive 100 */
-  --ink-2: #2f3228;       /* dusty olive 200 */
-  --ink-3: #5f6450;       /* dusty olive 400, 5.6:1 on the page */
-  --accent: #ff1053;      /* hot fuchsia: focus, selection, highlighted lines; never small text (3.6:1) */
-  --accent-ink: #b8003a;  /* the accent as text, 6.5:1 on white */
-  --accent-soft: #ffe5ec;
-  --ok: #474b3c;          /* dusty olive 300 */
-  --ok-soft: #e4e6df;
-  --warn: #873828;        /* almond silk 200 */
-  --warn-soft: #f8ece9;   /* almond silk 800 */
-  --bad: #a2002e;         /* hot fuchsia 300 */
-  --bad-soft: #ffcfdd;    /* hot fuchsia 900 */
+  /* dark by default; coolors "mono neon picnic" families: dusty olive, ash grey, almond silk, one hot fuchsia neon */
+  color-scheme: dark;
+  --bg: #0b0c0a;          /* near black, olive-tinted */
+  --panel: #151613;       /* raised panels */
+  --raised: #1f211c;      /* hover, inputs, nested */
+  --line: #2a2c26;
+  --line-strong: #3b3e34;
+  --ink: #f1f1ec;         /* ash grey 900 */
+  --ink-2: #c9ccc0;       /* dusty olive 800 */
+  --ink-3: #939980;       /* dusty olive 600, 6:1 on panels */
+  --accent: #ff1053;      /* hot fuchsia: focus, selection, highlighted lines */
+  --accent-ink: #ff6f98;  /* the accent as text, 6.9:1 on panels */
+  --accent-soft: #3a0a18;
+  --ok: #aeb3a0;
+  --ok-soft: #23261e;
+  --warn: #da9384;        /* almond silk 400 */
+  --warn-soft: #2f1b16;
+  --bad: #ff6f98;
+  --bad-soft: #3a0a18;
+  --on-ink: #0b0c0a;      /* text on an ink-filled (light) button */
 }
 
 @theme inline {
@@ -38,6 +40,7 @@
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
   --color-accent-ink: var(--accent-ink);
+  --color-on-ink: var(--on-ink);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
   --color-warn: var(--warn);

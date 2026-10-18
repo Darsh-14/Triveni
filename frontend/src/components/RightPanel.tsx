@@ -261,7 +261,7 @@ export default function RightPanel({ width, state, tenant, refreshKey, onTab, on
 }) {
   const available = (t: PanelTab) => t === "approvals" || (t === "node" ? !!state.nodeId : t === "cypher" ? !!state.step : !!state.docId);
   return (
-    <aside style={{ width }} className="flex h-full shrink-0 flex-col bg-panel">
+    <aside style={{ width }} className="flex h-full shrink-0 flex-col overflow-hidden rounded-xl border border-line bg-panel">
       <div className="flex items-center gap-1 border-b border-line px-2 py-1.5">
         <div role="tablist" className="flex flex-1 gap-0.5">
           {TABS.map(({ tab, label }) => (

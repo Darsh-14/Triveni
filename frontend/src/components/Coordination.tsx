@@ -106,7 +106,7 @@ export default function Approvals({ tenant, refreshKey, onOpen, onResult, onChan
               {a.status === "proposed" && (
                 <div className="mt-2 flex gap-1.5">
                   <button disabled={busy || !approver} onClick={() => decide(a.id, true)}
-                          className="rounded bg-ink px-3 py-1 font-medium text-white hover:bg-ink-2 disabled:opacity-50">Approve</button>
+                          className="rounded bg-ink px-3 py-1 font-medium text-on-ink hover:bg-ink-2 disabled:opacity-50">Approve</button>
                   <button disabled={busy || !approver} onClick={() => decide(a.id, false)}
                           className="rounded border border-line-strong px-3 py-1 font-medium text-ink-2 hover:bg-raised disabled:opacity-50">Reject</button>
                 </div>

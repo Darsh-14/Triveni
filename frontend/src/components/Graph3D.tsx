@@ -35,12 +35,12 @@ type L = { id: string; source: string | N; target: string | N; type: string; old
 type Parts = { group: Group; mesh: Mesh; label: SpriteTextType };
 
 const ACCENT = "#ff1053";
-const INK = "#181914";
-const PAGE = "#f7f7f3";
-const LINK = "#a6a88f";
-const LINK_FAINT = "#e2e3da";
-const OWNS_LINK = "#d4d5c7";
-const OLD = "#873828";
+const INK = "#f1f1ec";
+const PAGE = "#0f100e";
+const LINK = "#5f6450";
+const LINK_FAINT = "#23251f";
+const OWNS_LINK = "#2f3228";
+const OLD = "#da9384";
 const LABEL_LIMIT = 30; // above this many nodes, only some labels are drawn
 
 const idOf = (end: string | N) => (typeof end === "string" ? end : end.id);
@@ -191,9 +191,9 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
         const { colour, shape } = styleOf(n.kind);
         const mesh = await makeMesh(shape, colour);
         if (cancelled) return;
-        const label = new SpriteText(n.name.length > 26 ? `${n.name.slice(0, 25)}…` : n.name, 5.5, INK);
+        const label = new SpriteText(n.name.length > 26 ? `${n.name.slice(0, 25)}…` : n.name, 4.2, INK);
         label.fontFace = face;
-        label.backgroundColor = "rgba(255,255,255,0.88)";
+        label.backgroundColor = "rgba(21,22,19,0.85)";
         label.padding = 1.2;
         label.borderRadius = 1;
         label.position.set(0, 10, 0);
@@ -207,7 +207,7 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
       fitNext.current = !grows;
       g.nodeThreeObject((n: N) => parts.current.get(n.id)?.group as Object3D);
       // layout: tree and radial are 3D DAG layouts rooted at the queried node; force otherwise
-      g.dagMode(layout === "tree" ? "td" : layout === "radial" ? "radialout" : (null as never)).dagLevelDistance(layout === "force" ? (null as never) : 45);
+      g.dagMode(layout === "tree" ? "td" : layout === "radial" ? "radialout" : (null as never)).dagLevelDistance(layout === "force" ? (null as never) : 60);
       // overview: OWNS pulls a service tight to its team, dependencies are long and weak, so teams form clusters
       type LinkForce = { distance: (f: (l: L) => number) => LinkForce; strength: (f: (l: L) => number) => LinkForce };
       const linkForce = g.d3Force("link") as unknown as LinkForce | undefined;
@@ -217,7 +217,7 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
       }
       // small graphs draw every label, so nodes keep a label's width apart; big ones only the solid's
       const collide = g.d3Force("collide") as unknown as { radius: (r: number) => unknown } | undefined;
-      collide?.radius(next.length <= LABEL_LIMIT ? 24 : 11);
+      collide?.radius(next.length <= LABEL_LIMIT ? 34 : 11);
       g.graphData({ nodes: next, links });
       if (!grows) g.d3ReheatSimulation();
     })();
