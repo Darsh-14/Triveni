@@ -19,6 +19,7 @@ interface Props {
   onLayout: (l: LayoutName) => void;
   selected: string | null;
   onSelect: (id: string | null) => void;
+  onExpand?: (id: string) => void; // double-click a node: add its neighbours
 }
 
 export const edgeKey = (e: GraphEdge) => `${e.type}:${e.source}->${e.target}`;
@@ -47,6 +48,8 @@ const STYLE = [
       "background-color": "#b45309", "background-opacity": 0.04, color: "#b45309" } },
   { selector: "node.collapsed", style: { width: 40, height: 40, "font-weight": "bold", color: "#047857" } },
   { selector: "edge.meta", style: { width: "mapData(count, 1, 12, 1.5, 6)", "line-color": "#94a3b8", "target-arrow-color": "#94a3b8" } },
+  { selector: "edge.quiet", style: { label: "" } },
+  { selector: "edge.quiet.lit", style: { label: "data(label)" } },
   { selector: ".faded", style: { opacity: 0.12, "text-opacity": 0 } },
   { selector: ".off", style: { display: "none" } },
 ];
@@ -145,6 +148,11 @@ function buildElements(nodes: GraphNode[], edges: GraphEdge[], roots: string[], 
   return els;
 }
 
+/** Busy graphs: edge labels only on the selected node's edges (they would otherwise pile up on each other). */
+function quietLabels(c: Core) {
+  c.edges().toggleClass("quiet", c.edges().length > 20);
+}
+
 /** Fit the graph, but never blow a small evidence graph up past 125%. */
 function fitCapped(c: Core | null) {
   if (!c || !c.elements().length) return;
@@ -152,7 +160,7 @@ function fitCapped(c: Core | null) {
   if (c.zoom() > 1.25) { c.zoom(1.25); c.center(); }
 }
 
-export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout, onLayout, selected, onSelect }: Props) {
+export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout, onLayout, selected, onSelect, onExpand }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const cy = useRef<Core | null>(null);
   const [ready, setReady] = useState(false);
@@ -164,8 +172,9 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
   const [legendOpen, setLegendOpen] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [tip, setTip] = useState<{ x: number; y: number; name: string; label: string; id: string } | null>(null);
-  const handlers = useRef({ onSelect });
-  useEffect(() => { handlers.current = { onSelect }; }, [onSelect]);
+  const handlers = useRef({ onSelect, onExpand });
+  useEffect(() => { handlers.current = { onSelect, onExpand }; }, [onSelect, onExpand]);
+  const wasGrouped = useRef(false);
 
   // one instance for the page lifetime
   useEffect(() => {
@@ -185,8 +194,14 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
         setTip({ x: p.x, y: p.y, name: e.target.data("name"), label: e.target.data("kind"), id: e.target.id() });
       });
       cy.current.on("mouseout", "node", () => setTip(null));
+      cy.current.on("mouseover", "edge", (e) => e.target.addClass("lit"));
+      cy.current.on("mouseout", "edge", (e) => e.target.removeClass("lit"));
       cy.current.on("dbltap", "node", (e) => {
-        if (e.target.data("kind") !== "Team") return;
+        if (e.target.id().startsWith("group:")) return;
+        if (e.target.data("kind") !== "Team" || !e.target.isParent() && !e.target.hasClass("collapsed")) {
+          handlers.current.onExpand?.(e.target.id());
+          return;
+        }
         const id = e.target.id();
         setCollapsed((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
       });
@@ -221,8 +236,35 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
     const c = cy.current;
     if (!c || !ready) return;
     const els = buildElements(nodes, edges, roots, overview, groupedNow, collapsed);
+    const before = c.nodes().map((n) => n.id());
+    const ids = new Set(nodes.map((n) => n.id));
+    const grows = before.length > 0 && !groupedNow && !wasGrouped.current && before.every((id) => ids.has(id));
+    wasGrouped.current = groupedNow;
+    if (grows) {
+      // expansion: keep what is on screen where it is, place only the new nodes around it
+      const added = els.filter((el) => c.getElementById(String(el.data.id)).empty());
+      if (!added.length) return;
+      const fixed = c.nodes().map((n) => ({ nodeId: n.id(), position: { ...n.position() } }));
+      c.batch(() => {
+        added.forEach((el) => {
+          if (el.data.source) return;
+          const link = added.find((e) => e.data.source && (e.data.source === el.data.id || e.data.target === el.data.id));
+          const anchor = link ? c.getElementById(String(link.data.source === el.data.id ? link.data.target : link.data.source)) : null;
+          const p = anchor?.nonempty() ? anchor.position() : { x: 0, y: 0 };
+          el.position = { x: p.x + (Math.random() - 0.5) * 80, y: p.y + (Math.random() - 0.5) * 80 };
+        });
+        c.add(added.filter((el) => !el.data.source));
+        c.add(added.filter((el) => el.data.source));
+      });
+      c.layout({ name: "fcose", animate: false, randomize: false, padding: 40, fixedNodeConstraint: fixed,
+                 nodeRepulsion: () => 40000, idealEdgeLength: () => 160, nodeSeparation: 110 } as LayoutOptions).run();
+      quietLabels(c);
+      fitCapped(c);
+      return;
+    }
     c.batch(() => { c.elements().remove(); c.add(els); });
     c.layout(layoutOptions(layout, c, roots, nodes.length, groupedNow)).run();
+    quietLabels(c);
     fitCapped(c);
   }, [nodes, edges, roots, ready, overview, groupedNow, collapsed]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -249,7 +291,11 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
       c.edges().filter((e) => hiddenTypes.has(e.data("type"))).addClass("off");
       if (hover) c.getElementById(hover).addClass("hover");
       c.nodes().unselect();
-      if (selected) c.getElementById(selected).select();
+      c.edges().removeClass("lit");
+      if (selected) {
+        const sel = c.getElementById(selected).select();
+        if (sel.connectedEdges().length <= 10) sel.connectedEdges().addClass("lit"); // a hub's labels would pile up again
+      }
     });
   }, [focus, dim, selected, hiddenLabels, hiddenTypes, hover, ready, nodes, edges]);
 

@@ -231,6 +231,9 @@ export const api = {
     call<GraphNode[]>("/api/graph/nodes", { method: "POST", body: JSON.stringify({ tenant, ids }) }),
   node: (tenant: string, id: string) =>
     call<NodeDetail>(`/api/graph/node/${encodeURIComponent(id)}?tenant=${encodeURIComponent(tenant)}`),
+  expand: (tenant: string, id: string, depth: 1 | 2) =>
+    call<{ nodes: GraphNode[]; edges: GraphEdge[] }>(
+      `/api/graph/expand/${encodeURIComponent(id)}?tenant=${encodeURIComponent(tenant)}&depth=${depth}`),
   people: (tenant: string) => call<Person[]>(`/api/people?tenant=${encodeURIComponent(tenant)}`),
   document: (tenant: string, id: string) =>
     call<Doc>(`/api/documents/${encodeURIComponent(id)}?tenant=${encodeURIComponent(tenant)}`),

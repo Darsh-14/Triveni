@@ -255,6 +255,24 @@ export default function Triveni() {
     }
   };
 
+  // Grow the canvas from any node: its current neighbours (depth 1 or 2) are merged into what is shown
+  const expandNode = async (id: string, depth: 1 | 2 = 1) => {
+    try {
+      const r = await api.expand(tenant, id, depth);
+      setGraph((g) => {
+        const nodes = new Map(g.nodes.map((n) => [n.id, n]));
+        r.nodes.forEach((n) => { if (!nodes.has(n.id)) nodes.set(n.id, n); });
+        const edges = new Map(g.edges.map((e) => [edgeKey(e), e]));
+        r.edges.forEach((e) => { if (!edges.has(edgeKey(e))) edges.set(edgeKey(e), e); });
+        return { ...g, nodes: [...nodes.values()], edges: [...edges.values()] };
+      });
+      setSelected(id);
+      setFocusStep(null);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
   // ---------------------------------------------------------------- right panel
   const openId = (id: string) => {
     if (id.startsWith("doc:")) { setPanel({ ...(panel ?? {}), tab: "source", docId: id }); return; }
@@ -432,7 +450,8 @@ export default function Triveni() {
           <div className="relative isolate min-h-0 flex-1">
             <div className={view === "graph" ? "h-full" : "hidden"}>
               <GraphCanvas nodes={graph.nodes} edges={graph.edges} roots={graph.roots} focus={focus} hover={hover}
-                           layout={layout} onLayout={setLayout} selected={selected} onSelect={selectNode} />
+                           layout={layout} onLayout={setLayout} selected={selected} onSelect={selectNode}
+                           onExpand={(id) => expandNode(id, 1)} />
             </div>
             {view === "table" && <GraphTable nodes={graph.nodes} edges={graph.edges} onOpen={openId} />}
           </div>
@@ -441,7 +460,7 @@ export default function Triveni() {
         {panel && (
           <RightPanel state={panel} tenant={tenant} refreshKey={coordKey}
                       onTab={(t: PanelTab) => setPanel({ ...panel, tab: t })} onClose={() => setPanel(null)} onOpen={openId}
-                      onResult={addAgentResult} onChanged={() => setCoordKey((k) => k + 1)} />
+                      onResult={addAgentResult} onChanged={() => setCoordKey((k) => k + 1)} onExpand={expandNode} />
         )}
       </main>
     </div>
