@@ -35,11 +35,11 @@ const STYLE = [
   { selector: "node:selected", style: { "border-width": 3, "border-color": "#ff1053", "overlay-opacity": 0 } },
   { selector: "node.hover", style: { "border-width": 3, "border-color": "#ff1053", width: 30, height: 30, "z-index": 20 } },
   { selector: "edge", style: {
-      width: 1.5, "line-color": "#5f6450", "target-arrow-color": "#5f6450", "target-arrow-shape": "triangle",
+      width: 2.5, "line-color": "#9fb4ff", "target-arrow-color": "#9fb4ff", "target-arrow-shape": "triangle",
       "curve-style": "bezier", "arrow-scale": 0.8, label: "data(label)", "font-size": 10, "font-family": "IBM Plex Mono, monospace", color: "#939980",
       "min-zoomed-font-size": 7, "text-background-color": "#151613", "text-background-opacity": 0.9,
       "text-background-padding": "1px" } },
-  { selector: "edge.overview", style: { label: "", width: 1, "line-color": "#2f3228", "target-arrow-color": "#2f3228" } },
+  { selector: "edge.overview", style: { label: "", width: 1.6, "line-color": "#6f82c8", "target-arrow-color": "#6f82c8" } },
   { selector: "edge.old", style: { "line-style": "dashed", "line-color": "#f2c14e", "target-arrow-color": "#f2c14e", color: "#f2c14e" } },
   // team grouping (overview): a team is a box around the services it owns; collapsed it is one node
   { selector: "node:parent", style: {

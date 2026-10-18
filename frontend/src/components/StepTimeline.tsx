@@ -14,6 +14,7 @@ const OUTCOME: Record<string, { label: string; cls: string; title: string }> = {
   not_in_graph: { label: "absent", cls: "text-warn", title: "The entity exists; the fact asked about is not in the graph" },
   from_memory: { label: "from memory", cls: "text-accent-ink", title: "Answered from earlier episodes" },
   recorded: { label: "recorded", cls: "text-ok", title: "Written to the graph" },
+  refused: { label: "refused", cls: "text-bad", title: "The model-written query was not run (unsafe, unknown label, or rejected by FalkorDB)" },
 };
 
 const resolvedTitle = (s: Step) =>

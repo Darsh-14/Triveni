@@ -23,7 +23,7 @@ export interface ToolResult {
 }
 
 /** Every tool result states what happened, so an empty traversal is never read as "nothing is affected". */
-export type Outcome = "answered" | "from_memory" | "not_in_graph" | "unknown_entity" | "recorded" | "error" | "";
+export type Outcome = "answered" | "from_memory" | "not_in_graph" | "unknown_entity" | "recorded" | "refused" | "error" | "";
 
 /** How a typed name was matched to a graph node before the tool ran ("Priya" -> per:priya-nair, partial_name). */
 export interface Resolution {

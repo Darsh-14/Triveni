@@ -37,9 +37,9 @@ type Parts = { group: Group; mesh: Mesh; label: SpriteTextType };
 const ACCENT = "#ff1053";
 const INK = "#ffffff";
 const PAGE = "#03040a"; // deep space
-const LINK = "#6a7090";
-const LINK_FAINT = "#1a1d2b";
-const OWNS_LINK = "#2c3048";
+const LINK = "#9fb4ff"; // bright periwinkle on black
+const LINK_FAINT = "#2a3150";
+const OWNS_LINK = "#5ec2b7"; // team ownership in teal
 const OLD = "#f2c14e";
 const LABEL_LIMIT = 30; // above this many nodes, only some labels are drawn
 
@@ -116,10 +116,10 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
       try {
         g = new ForceGraph3D(host.current, { controlType: "orbit" }) as unknown as ForceGraph3DInstance<N, L>;
       } catch { onUnavailable?.(); return; }
-      g.backgroundColor(PAGE).showNavInfo(false).enableNodeDrag(true)
+      g.backgroundColor(PAGE).showNavInfo(false).enableNodeDrag(true).linkOpacity(0.85)
         .nodeLabel(() => "") // our own labels; no browser tooltip on top of them
         .linkLabel((l: L) => l.type)
-        .linkDirectionalArrowLength(3.2).linkDirectionalArrowRelPos(1)
+        .linkDirectionalArrowLength(5).linkDirectionalArrowRelPos(1)
         .linkDirectionalParticleWidth(1.8).linkDirectionalParticleSpeed(0.006)
         .warmupTicks(30).cooldownTicks(140)
         .onDagError(() => { /* a cycle: the tree layout places what it can, the rest stays force-directed */ })
@@ -165,17 +165,6 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
       observer = new ResizeObserver(resize);
       observer.observe(host.current);
       resize();
-      // a starfield far behind the graph (outside the fog, so the stars stay sharp)
-      const T = await import("three");
-      const count = 2600, pos = new Float32Array(count * 3);
-      for (let i = 0; i < count; i++) {
-        const r = 1600 + Math.random() * 2400, th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
-        pos.set([r * Math.sin(ph) * Math.cos(th), r * Math.sin(ph) * Math.sin(th), r * Math.cos(ph)], i * 3);
-      }
-      const geo = new T.BufferGeometry();
-      geo.setAttribute("position", new T.BufferAttribute(pos, 3));
-      g.scene().add(new T.Points(geo, new T.PointsMaterial({ color: "#c8d0ff", size: 2.2, sizeAttenuation: false, fog: false,
-                                                            transparent: true, opacity: 0.75 })));
       setReady(true);
     })();
     return () => { disposed = true; observer?.disconnect(); fg.current?._destructor(); fg.current = null; };
@@ -333,7 +322,7 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
         if (l.type === "OWNS" && overview) return OWNS_LINK;
         return anyLit ? LINK_FAINT : LINK;
       })
-      .linkWidth((l: L) => (state.litLinks.has(l.id) ? (pinned?.id === l.id ? 1.6 : 1.1) : 0))
+      .linkWidth((l: L) => (state.litLinks.has(l.id) ? (pinned?.id === l.id ? 2.6 : 2) : state.faded?.(l.id) ? 0.4 : 1))
       .linkDirectionalParticles((l: L) => (state.litLinks.has(l.id) ? 3 : 0))
       .linkDirectionalParticleColor(() => ACCENT)
       .linkDirectionalArrowColor((l: L) => (state.litLinks.has(l.id) ? ACCENT : l.old && compare !== "before" ? OLD : LINK));
