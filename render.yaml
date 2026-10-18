@@ -1,0 +1,40 @@
+# Render Blueprint for the Triveni API (FastAPI + agents + MCP). The data lives in FalkorDB Cloud; Render runs code only.
+# Render dashboard -> New -> Blueprint -> pick this repo. Fill in the values marked sync: false when asked.
+services:
+  - type: web
+    name: triveni-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -e .
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.3"
+      - key: PYTHONIOENCODING
+        value: utf-8
+      # FalkorDB Cloud: copy from the Cloud console (same values as your local .env)
+      - key: TRIVENI_FALKORDB_HOST
+        sync: false
+      - key: TRIVENI_FALKORDB_PORT
+        sync: false
+      - key: TRIVENI_FALKORDB_USERNAME
+        sync: false
+      - key: TRIVENI_FALKORDB_PASSWORD
+        sync: false
+      - key: TRIVENI_FALKORDB_SSL
+        value: "false"
+      # models: free tiers; with no key the agent still answers in deterministic rules mode
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TRIVENI_GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: TRIVENI_LLM_PROVIDERS
+        value: groq,gemini,rules
+      # the Vercel UI: every deployment of the project (production and previews)
+      - key: TRIVENI_CORS_ORIGIN_REGEX
+        value: https://triveni[a-z0-9-]*\.vercel\.app
+      - key: TRIVENI_CORS_ORIGINS
+        value: http://localhost:3001

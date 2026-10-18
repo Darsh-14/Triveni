@@ -32,6 +32,14 @@ npm --prefix frontend install && npm --prefix frontend run dev   # UI on :3001
 python -m backend.app.agents.triage "payments-api is failing, what's affected and who do I page?" --tenant acme
 ```
 
+## Deploy
+FalkorDB Cloud holds all data; Render runs the API (code only); Vercel serves the UI.
+1. **API on Render:** New -> Blueprint -> this repo. `render.yaml` sets the build (`pip install -e .`), the start command, Python 3.13 and the health check. Paste the FalkorDB Cloud host, port, username and password and the Groq/Gemini keys when asked. Seed once from your machine with `python -m backend.scripts.demo_reset` against the same FalkorDB instance.
+2. **UI on Vercel:** import this repo with Root Directory `frontend` and set `NEXT_PUBLIC_TRIVENI_API` to the Render URL (for example `https://triveni-api.onrender.com`).
+3. CORS: `TRIVENI_CORS_ORIGIN_REGEX` in `render.yaml` already allows every `triveni*.vercel.app` URL.
+
+The free Render plan sleeps after 15 minutes idle: the first request after that takes about a minute.
+
 ## Graph model
 One FalkorDB graph per tenant (`tenant_acme`, `tenant_beta`): a tenant is selected per request and no query can cross graphs. The schema is fixed and enforced in code (`backend/app/graph/schema.py`): seed and ingestion validate every node and edge before writing. Full rationale: [notes/graph-model.md](notes/graph-model.md). Demo tenant `acme`: about 360 nodes and 1,500 edges.
 

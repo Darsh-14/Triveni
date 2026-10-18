@@ -28,6 +28,8 @@ app = FastAPI(title="Triveni", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("TRIVENI_CORS_ORIGINS", "http://localhost:3001,http://127.0.0.1:3001").split(","),
+    # deployed UI: e.g. https://triveni[a-z0-9-]*\.vercel\.app covers the production and preview URLs Vercel assigns
+    allow_origin_regex=os.getenv("TRIVENI_CORS_ORIGIN_REGEX") or None,
     allow_methods=["*"], allow_headers=["*"],
 )
 
