@@ -249,14 +249,14 @@ const TABS: { tab: PanelTab; label: string }[] = [
   { tab: "node", label: "Node" }, { tab: "cypher", label: "Cypher" }, { tab: "source", label: "Source" }, { tab: "approvals", label: "Approvals" },
 ];
 
-export default function RightPanel({ state, tenant, refreshKey, onTab, onClose, onOpen, onResult, onChanged, onExpand }: {
-  state: PanelState; tenant: string; refreshKey: number; onExpand: (id: string, depth: 1 | 2) => void;
+export default function RightPanel({ width, state, tenant, refreshKey, onTab, onClose, onOpen, onResult, onChanged, onExpand }: {
+  width: number; state: PanelState; tenant: string; refreshKey: number; onExpand: (id: string, depth: 1 | 2) => void;
   onTab: (t: PanelTab) => void; onClose: () => void; onOpen: (id: string) => void;
   onResult: (label: string, r: AgentResult) => void; onChanged: () => void;
 }) {
   const available = (t: PanelTab) => t === "approvals" || (t === "node" ? !!state.nodeId : t === "cypher" ? !!state.step : !!state.docId);
   return (
-    <aside className="flex h-full w-[400px] shrink-0 flex-col border-l border-line bg-panel shadow-[-4px_0_12px_rgba(15,23,42,0.04)]">
+    <aside style={{ width }} className="flex h-full shrink-0 flex-col bg-panel shadow-[-4px_0_12px_rgba(15,23,42,0.04)]">
       <div className="flex items-center gap-1 border-b border-line px-2 py-1.5">
         <div role="tablist" className="flex flex-1 gap-0.5">
           {TABS.map(({ tab, label }) => (

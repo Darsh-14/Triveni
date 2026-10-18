@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LayoutGrid, Maximize, MessagesSquare, Play, Plus, Repeat, Search, Send, ShieldCheck, Table2, Wrench, X } from "lucide-react";
+import { LayoutGrid, Maximize, MessagesSquare, PanelLeftClose, PanelLeftOpen, Play, Plus, Repeat, Search, Send, ShieldCheck, Table2,
+         Wrench, X } from "lucide-react";
 import {
   api, parseEdge, toolAsStep, type AgentResult, type ConversationInfo, type GraphEdge, type GraphNode, type Health,
   type Guard, type Person, type Step, type ToolInfo,
@@ -13,10 +14,18 @@ import GraphTable from "./GraphTable";
 import RightPanel, { type PanelState, type PanelTab } from "./RightPanel";
 import ToolRunner from "./ToolRunner";
 import CommandPalette, { type PaletteItem } from "./CommandPalette";
+import Splitter from "./Splitter";
 import { Chip, ShapeSwatch } from "./ui";
 
 /** The rejected-draft record, if the proof check replaced the model's answer (empty object otherwise). */
 const guardOf = (r: AgentResult) => (r.guard && "reason" in r.guard ? (r.guard as Guard) : undefined);
+
+// pane widths are a per-viewer convenience: remembered in this browser, never required
+const PANES_KEY = "triveni.panes";
+const DEFAULT_PANES = { thread: 480, panel: 400, threadOpen: true };
+function loadPanes(): typeof DEFAULT_PANES {
+  try { return { ...DEFAULT_PANES, ...JSON.parse(localStorage.getItem(PANES_KEY) ?? "{}") }; } catch { return DEFAULT_PANES; }
+}
 
 let counter = 0;
 const newId = () => `e${++counter}`;
@@ -87,6 +96,7 @@ export default function Triveni() {
   const [people, setPeople] = useState<Person[]>([]);
   const [toolChoice, setToolChoice] = useState<string | undefined>(undefined);
   const [modKey, setModKey] = useState("Ctrl");
+  const [panes, setPanes] = useState(DEFAULT_PANES);
   const composer = useRef<HTMLInputElement>(null);
   const threadEnd = useRef<HTMLDivElement>(null);
   const aborts = useRef(new Map<string, AbortController>());
@@ -145,6 +155,13 @@ export default function Triveni() {
 
   // shortcut label for the search button (read after mount: the server render cannot know the platform)
   useEffect(() => { setModKey(/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl"); }, []); // eslint-disable-line react-hooks/set-state-in-effect
+
+  useEffect(() => { setPanes(loadPanes()); }, []); // eslint-disable-line react-hooks/set-state-in-effect
+  const resize = (patch: Partial<typeof DEFAULT_PANES>) => setPanes((cur) => {
+    const next = { ...cur, ...patch };
+    try { localStorage.setItem(PANES_KEY, JSON.stringify(next)); } catch { /* storage blocked: widths just are not remembered */ }
+    return next;
+  });
 
   useEffect(() => { threadEnd.current?.scrollIntoView({ block: "end" }); }, [entries.length]);
 
@@ -423,10 +440,15 @@ export default function Triveni() {
             <ShieldCheck size={18} />
             {pendingApprovals > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-warn" aria-hidden />}
           </button>
+          <button title={panes.threadOpen ? "Hide thread" : "Show thread"} aria-label={panes.threadOpen ? "Hide thread" : "Show thread"}
+                  aria-pressed={!panes.threadOpen} onClick={() => resize({ threadOpen: !panes.threadOpen })}
+                  className="mt-auto grid h-9 w-9 place-items-center rounded-md text-ink-3 hover:bg-raised hover:text-ink">
+            {panes.threadOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+          </button>
         </nav>
 
         {/* thread */}
-        <section className="relative flex w-[480px] min-w-[420px] shrink-0 flex-col border-r border-line bg-bg">
+        <section style={{ width: panes.thread }} className={`relative shrink-0 flex-col bg-bg ${panes.threadOpen ? "flex" : "hidden"}`}>
           {flyout && <div className="absolute inset-0 z-20 bg-ink/20" onClick={() => setFlyout(null)} aria-hidden />}
           {flyout && (
             <div className="absolute inset-x-0 top-0 z-30 max-h-[75%] overflow-auto border-b border-line bg-panel p-3 shadow-lg">
@@ -485,6 +507,11 @@ export default function Triveni() {
           </form>
         </section>
 
+        {panes.threadOpen && (
+          <Splitter label="Resize thread" value={panes.thread} min={340} max={760} reset={DEFAULT_PANES.thread} grow="right"
+                    onChange={(w) => resize({ thread: w })} />
+        )}
+
         {/* graph */}
         <section className="flex min-w-0 flex-1 flex-col bg-panel">
           <div className="flex h-10 shrink-0 items-center gap-3 border-b border-line px-3 text-xs">
@@ -512,7 +539,11 @@ export default function Triveni() {
         </section>
 
         {panel && (
-          <RightPanel state={panel} tenant={tenant} refreshKey={coordKey}
+          <Splitter label="Resize panel" value={panes.panel} min={320} max={720} reset={DEFAULT_PANES.panel} grow="left"
+                    onChange={(w) => resize({ panel: w })} />
+        )}
+        {panel && (
+          <RightPanel width={panes.panel} state={panel} tenant={tenant} refreshKey={coordKey}
                       onTab={(t: PanelTab) => setPanel({ ...panel, tab: t })} onClose={() => setPanel(null)} onOpen={openId}
                       onResult={addAgentResult} onChanged={() => setCoordKey((k) => k + 1)} onExpand={expandNode} />
         )}
