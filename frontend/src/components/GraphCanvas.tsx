@@ -8,6 +8,7 @@ import { styleOf } from "@/lib/entities";
 import { IconButton, ShapeSwatch } from "./ui";
 
 export type LayoutName = "force" | "tree" | "radial";
+export type Compare = "both" | "before" | "after"; // a knowledge change on the canvas: show the old state, the new, or both
 
 interface Props {
   nodes: GraphNode[];
@@ -20,6 +21,7 @@ interface Props {
   selected: string | null;
   onSelect: (id: string | null) => void;
   onExpand?: (id: string) => void; // double-click a node: add its neighbours
+  compare?: Compare;
 }
 
 export const edgeKey = (e: GraphEdge) => `${e.type}:${e.source}->${e.target}`;
@@ -48,6 +50,7 @@ const STYLE = [
       "background-color": "#b45309", "background-opacity": 0.04, color: "#b45309" } },
   { selector: "node.collapsed", style: { width: 40, height: 40, "font-weight": "bold", color: "#047857" } },
   { selector: "edge.meta", style: { width: "mapData(count, 1, 12, 1.5, 6)", "line-color": "#94a3b8", "target-arrow-color": "#94a3b8" } },
+  { selector: "edge.asof", style: { "line-style": "solid", "line-color": "#94a3b8", "target-arrow-color": "#94a3b8", color: "#5b6577", label: "data(type)" } },
   { selector: "edge.quiet", style: { label: "" } },
   { selector: "edge.quiet.lit", style: { label: "data(label)" } },
   { selector: ".faded", style: { opacity: 0.12, "text-opacity": 0 } },
@@ -67,7 +70,7 @@ function layoutOptions(name: LayoutName, cy: Core, roots: string[], count: numbe
              concentric: (n: NodeSingular) => (rootIds.has(n.id()) ? 100 : n.degree(false)) } as LayoutOptions;
   }
   return { name: "fcose", animate: false, randomize: true, padding: 40, quality: "default",
-           nodeRepulsion: () => (count > 30 ? 9000 : 5000), idealEdgeLength: () => (count > 30 ? 90 : 70),
+           nodeRepulsion: () => (count > 30 ? 9000 : 8000), idealEdgeLength: () => (count > 30 ? 90 : 120),
            nodeSeparation: 60 } as LayoutOptions;
 }
 
@@ -88,7 +91,7 @@ function buildElements(nodes: GraphNode[], edges: GraphEdge[], roots: string[], 
     return [
       ...nodes.map((n) => node(n)),
       ...shown.map((e) => ({
-        data: { id: edgeKey(e), source: e.source, target: e.target, type: e.type,
+        data: { id: edgeKey(e), source: e.source, target: e.target, type: e.type, superseded: e.superseded ? 1 : 0,
                 label: e.superseded || e.stale ? `${e.type} · ${e.superseded ? "superseded" : "stale"}` : e.type },
         classes: [e.superseded || e.stale ? "old" : "", overview ? "overview" : ""].join(" ").trim(),
       })),
@@ -160,7 +163,7 @@ function fitCapped(c: Core | null) {
   if (c.zoom() > 1.25) { c.zoom(1.25); c.center(); }
 }
 
-export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout, onLayout, selected, onSelect, onExpand }: Props) {
+export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout, onLayout, selected, onSelect, onExpand, compare = "both" }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const cy = useRef<Core | null>(null);
   const [ready, setReady] = useState(false);
@@ -281,7 +284,15 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
     const c = cy.current;
     if (!c || !ready) return;
     c.batch(() => {
-      c.elements().removeClass("faded off hover");
+      c.elements().removeClass("faded off hover asof");
+      if (compare !== "both") {
+        // ended edges and the current edges that replaced them (same type, same target)
+        const ended = c.edges("[superseded = 1]");
+        const replaced = c.edges("[superseded != 1]").filter((e) =>
+          ended.some((o) => o.data("type") === e.data("type") && o.data("target") === e.data("target")));
+        if (compare === "before") { replaced.addClass("off"); ended.addClass("asof"); } else ended.addClass("off");
+        c.nodes().filter((n) => n.connectedEdges().length > 0 && n.connectedEdges().filter((e) => !e.hasClass("off")).empty()).addClass("faded");
+      }
       if (focus) c.elements().filter((el) => !focus.has(el.id())).addClass("faded");
       if (dim && selected) {
         const keep = c.getElementById(selected).closedNeighborhood();
@@ -297,7 +308,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
         if (sel.connectedEdges().length <= 10) sel.connectedEdges().addClass("lit"); // a hub's labels would pile up again
       }
     });
-  }, [focus, dim, selected, hiddenLabels, hiddenTypes, hover, ready, nodes, edges]);
+  }, [focus, dim, selected, hiddenLabels, hiddenTypes, hover, ready, nodes, edges, compare]);
 
   const labelCounts = useMemo(() => {
     const m = new Map<string, number>();

@@ -9,7 +9,7 @@ import {
 } from "@/lib/api";
 import { SCENARIOS, TRACK_COLUMNS, type Scenario } from "@/lib/scenarios";
 import EntryCard, { type Entry } from "./EntryCard";
-import GraphCanvas, { edgeKey, type LayoutName } from "./GraphCanvas";
+import GraphCanvas, { edgeKey, type Compare, type LayoutName } from "./GraphCanvas";
 import GraphTable from "./GraphTable";
 import RightPanel, { type PanelState, type PanelTab } from "./RightPanel";
 import ToolRunner from "./ToolRunner";
@@ -97,6 +97,7 @@ export default function Triveni() {
   const [toolChoice, setToolChoice] = useState<string | undefined>(undefined);
   const [modKey, setModKey] = useState("Ctrl");
   const [panes, setPanes] = useState(DEFAULT_PANES);
+  const [compare, setCompare] = useState<Compare>("both");
   const composer = useRef<HTMLInputElement>(null);
   const threadEnd = useRef<HTMLDivElement>(null);
   const aborts = useRef(new Map<string, AbortController>());
@@ -178,7 +179,7 @@ export default function Triveni() {
     const first = entry.steps.find((s) => s.paths.length)?.tool ?? "";
     setGraph({ nodes, edges: [...edges.values()], roots: rootsOf(entry.steps), title: entry.question, entryId: entry.id });
     setLayout(TREE_TOOLS.has(first) ? "tree" : "force");
-    setFocusStep(null); setSelected(null);
+    setFocusStep(null); setSelected(null); setCompare("both");
   }, []);
 
   const focus = useMemo(() => {
@@ -523,6 +524,14 @@ export default function Triveni() {
             </div>
             <span className="min-w-0 flex-1 truncate font-medium text-ink-2" title={graph.title}>{graph.title}</span>
             <span className="tabular-nums text-ink-3">{graph.nodes.length} nodes · {graph.edges.length} edges</span>
+            {graph.edges.some((e) => e.superseded) && (
+              <div role="radiogroup" aria-label="Before or after the change" className="flex rounded-md border border-line p-0.5">
+                {(["before", "after", "both"] as const).map((m) => (
+                  <button key={m} role="radio" aria-checked={compare === m} onClick={() => setCompare(m)}
+                          className={`rounded px-2 py-0.5 font-medium capitalize ${compare === m ? "bg-warn-soft text-warn" : "text-ink-3 hover:text-ink"}`}>{m}</button>
+                ))}
+              </div>
+            )}
             {focusStep !== null && <Chip tone="info">step {focusStep + 1}<button onClick={() => setFocusStep(null)} aria-label="Clear step"><X size={11} /></button></Chip>}
             {graph.entryId && (
               <button onClick={() => showOverview(tenant)} className="rounded-md border border-line px-2 py-1 font-medium text-ink-2 hover:bg-raised">Overview</button>
@@ -532,7 +541,7 @@ export default function Triveni() {
             <div className={view === "graph" ? "h-full" : "hidden"}>
               <GraphCanvas nodes={graph.nodes} edges={graph.edges} roots={graph.roots} focus={focus} hover={hover}
                            layout={layout} onLayout={setLayout} selected={selected} onSelect={selectNode}
-                           onExpand={(id) => expandNode(id, 1)} />
+                           onExpand={(id) => expandNode(id, 1)} compare={compare} />
             </div>
             {view === "table" && <GraphTable nodes={graph.nodes} edges={graph.edges} onOpen={openId} />}
           </div>
