@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Command, IconContext, LayoutGrid, Maximize, MessagesSquare, PanelLeftClose, PanelLeftOpen, Play, Plus, Repeat, Search, Send, ShieldCheck, Square, Table2, Wrench, X } from "./icons";
+import { Box, Command, IconContext, LayoutGrid, Maximize, MessagesSquare, PanelLeftClose, PanelLeftOpen, Play, Plus, Repeat, Search, Send, CircleCheck, Square, Table2, Wrench, X } from "./icons";
 import {
   api, parseEdge, toolAsStep, type AgentResult, type ConversationInfo, type GraphEdge, type GraphNode, type Health,
   type Guard, type Person, type Step, type ToolInfo,
 } from "@/lib/api";
-import { SCENARIOS, TRACK_COLUMNS, type Scenario } from "@/lib/scenarios";
+import { SCENARIOS, type Scenario } from "@/lib/scenarios";
 import { stripEmoji } from "@/lib/text";
 import EntryCard, { type Entry } from "./EntryCard";
 import GraphCanvas, { edgeKey, type Compare, type LayoutName } from "./GraphCanvas";
@@ -376,7 +376,7 @@ export default function Triveni() {
       { id: "action:2d", group: "Actions", label: "2D view", icon: <Square size={14} />, run: () => setView("2d") },
       { id: "action:table", group: "Actions", label: "Table view", icon: <Table2 size={14} />, run: () => setView("table") },
       { id: "action:approvals", group: "Actions", label: "Approvals", hint: pendingApprovals ? String(pendingApprovals) : undefined,
-        icon: <ShieldCheck size={14} />, run: openApprovals },
+        icon: <CircleCheck size={14} />, run: openApprovals },
       { id: "action:new", group: "Actions", label: "New conversation", icon: <Plus size={14} />, run: () => { openConversation(null); } },
       { id: "action:fit", group: "Actions", label: "Fit graph", hint: "f", icon: <Maximize size={14} />,
         run: () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "f" })) },
@@ -398,15 +398,14 @@ export default function Triveni() {
   };
 
   // ---------------------------------------------------------------- layout
-  // an index of the demo scenarios, grouped by track (not a grid of identical cards); the number is the shortcut
+  // the demo scenarios as one list, in order; the number is the shortcut, coloured by its first track
   const scenarioGrid = (compact: boolean) => (
     <div className={compact ? "space-y-3" : "space-y-5 px-5 py-6"}>
-      {TRACK_COLUMNS.map((col) => (
-        <section key={col.track}>
-          <h3 className="mb-1.5 text-[13px] font-semibold" style={{ color: TRACK_COLOUR[col.track] }}>{col.title}</h3>
+      <section>
+          <h3 className="mb-1.5 text-[13px] font-semibold text-ink">Try these</h3>
           <ul>
-            {SCENARIOS.filter((s) => s.tracks.includes(col.track)).map((s) => (
-              <li key={`${col.track}-${s.n}`}>
+            {[...SCENARIOS].sort((a, b) => a.n - b.n).map((s) => { const col = { track: s.tracks[0] }; return (
+              <li key={s.n}>
                 <button disabled={busy} onClick={() => runScenario(s)}
                         className="flex w-full items-center gap-3 rounded-lg px-1.5 py-1.5 text-left text-[14px] text-ink-2 hover:bg-raised hover:text-ink disabled:opacity-50">
                   <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md font-mono text-[11px] font-medium"
@@ -414,10 +413,9 @@ export default function Triveni() {
                   <span>{s.label}</span>
                 </button>
               </li>
-            ))}
+            ); })}
           </ul>
-        </section>
-      ))}
+      </section>
     </div>
   );
 
@@ -471,7 +469,7 @@ export default function Triveni() {
           ))}
           <button title="Approvals" aria-label="Approvals" onClick={openApprovals}
                   style={tile("var(--c-green)", panel?.tab === "approvals")} className="relative grid h-9 w-9 place-items-center rounded-lg hover:brightness-125">
-            <ShieldCheck size={19} />
+            <CircleCheck size={19} />
             {pendingApprovals > 0 && (
               <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-[2px] bg-warn px-0.5 text-center font-mono text-[10px] leading-4 text-on-ink">{pendingApprovals}</span>
             )}

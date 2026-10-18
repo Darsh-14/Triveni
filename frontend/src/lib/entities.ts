@@ -5,7 +5,7 @@ export type Shape = "round-rectangle" | "ellipse" | "hexagon" | "tag" | "triangl
 // From the "mono neon picnic" families only: olive and ash for systems and teams, almond for people and decisions,
 // fuchsia for incidents (the one neon thing) and the agent's memory. The shape carries the type too.
 export const LABEL_STYLE: Record<string, { colour: string; shape: Shape }> = {
-  Service: { colour: "#6fb7ff", shape: "round-rectangle" },   // sky blue
+  Service: { colour: "#4fd18b", shape: "round-rectangle" },   // green, against the sky-blue lines
   Team: { colour: "#b79cff", shape: "hexagon" },              // lilac
   Person: { colour: "#ff8a5c", shape: "ellipse" },            // almond silk 300
   Deployment: { colour: "#7fd1a1", shape: "tag" },            // ash grey 300
