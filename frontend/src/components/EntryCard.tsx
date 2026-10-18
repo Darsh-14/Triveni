@@ -234,9 +234,13 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
               {entry.steps.length} tool{entry.steps.length > 1 ? "s" : ""}
             </button>
           )}
-          {entry.ms !== undefined && <span className="font-mono">{(entry.ms / 1000).toFixed(1)} s</span>}
-          {entry.fallbacks?.map((f) => <span key={f} className="font-mono line-through">{f.split(":")[0]}</span>)}
-          {entry.model && <span className="truncate font-mono">{entry.model}</span>}
+          {/* which model answered is on hover; it is shown only when no model did (rules mode = deterministic) */}
+          {entry.ms !== undefined && (
+            <span className="font-mono" title={[entry.model && `answered by ${entry.model}`,
+              entry.fallbacks?.length ? `fell back from ${entry.fallbacks.map((f) => f.split(":")[0]).join(", ")}` : ""]
+              .filter(Boolean).join("; ")}>{(entry.ms / 1000).toFixed(1)} s</span>
+          )}
+          {entry.model === "rules" && <span className="font-mono" title="No model was reachable: tools were chosen by deterministic rules">no model</span>}
           <span className="ml-auto"><TrackTags tracks={tracks} /></span>
         </div>
       )}

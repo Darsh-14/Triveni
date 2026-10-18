@@ -73,11 +73,13 @@ export default function StepTimeline({ steps, events, totalMs, focusStep, onStep
           </li>
         ))}
       </ol>
-      <div className="grid grid-cols-[1rem_minmax(0,9.5rem)_1fr_3.5rem_1.25rem] gap-2 border-t border-line px-1 py-1 font-mono text-[11px] text-ink-3">
-        <span /><span />
-        <span className="flex justify-between"><span>0</span><span>{fmt(Math.round(total / 2))}</span><span>{fmt(total)}</span></span>
-        <span /><span />
-      </div>
+      {steps.length > 2 && (  // a time axis only helps when there are several bars to compare
+        <div className="grid grid-cols-[1rem_minmax(0,9.5rem)_1fr_3.5rem_1.25rem] gap-2 border-t border-line px-1 py-1 font-mono text-[11px] text-ink-3">
+          <span /><span />
+          <span className="flex justify-between gap-2"><span>0</span><span>{fmt(Math.round(total / 2))}</span><span>{fmt(total)}</span></span>
+          <span /><span />
+        </div>
+      )}
     </div>
   );
 }
