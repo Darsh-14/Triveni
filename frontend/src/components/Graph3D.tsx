@@ -423,8 +423,8 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
       })
       .linkWidth((l: L) => (state.litLinks.has(l.id) ? (pinned?.id === l.id ? 1.8 : 1.4) : state.faded?.(l.id) ? 0.3
         : Math.min(0.6 + ((lineCount.get(l.id) ?? 1) - 1) * 0.3, 3)))
-      .linkDirectionalParticles((l: L) => (state.litLinks.has(l.id) ? 3 : state.faded?.(l.id) ? 0 : 1)) // flow shows direction on every line
-      .linkDirectionalParticleColor((l: L) => (state.litLinks.has(l.id) ? ACCENT : "#dfe6ff"))
+      .linkDirectionalParticles((l: L) => (state.litLinks.has(l.id) ? 3 : 0)) // flow only on the highlighted lines
+      .linkDirectionalParticleColor(() => ACCENT)
       .linkDirectionalArrowColor((l: L) => (state.litLinks.has(l.id) ? ACCENT : l.old && compare !== "before" ? OLD : LINK));
   }, [state, ready, hiddenLabels, compare, overview, pinned, lineCount]);
 
