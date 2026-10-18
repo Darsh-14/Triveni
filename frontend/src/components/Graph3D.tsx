@@ -38,6 +38,7 @@ type Parts = { group: Group; mesh: Mesh; label: SpriteTextType };
 const ACCENT = "#ff1053";
 const INK = "#ffffff";
 const PAGE = "#03040a"; // deep space
+const NODE = "#4fd18b"; // node fill
 const LINK = "#7cc8ff"; // sky blue on black
 const LINK_FAINT = "#2c4a66"; // dimmed lines stay visible
 const OWNS_LINK = "#b5e2ff"; // team ownership in pale sky
@@ -284,7 +285,7 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
       for (const n of next) {
         if (parts.current.has(n.id)) continue;
         const { colour, shape } = styleOf(n.kind);
-        const mesh = await makeMesh(shape, colour);
+        const mesh = await makeMesh(shape, NODE) // every node green against the sky-blue lines; the shape tells the type;
         if (cancelled) return;
         const label = new SpriteText(n.name.length > 26 ? `${n.name.slice(0, 25)}…` : n.name, 5.2, INK);
         label.fontFace = face;
