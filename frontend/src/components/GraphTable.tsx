@@ -7,7 +7,7 @@ import { EntityChip, ShapeSwatch } from "./ui";
 export default function GraphTable({ nodes, edges, onOpen }: { nodes: GraphNode[]; edges: GraphEdge[]; onOpen: (id: string) => void }) {
   const ids = new Set(nodes.map((n) => n.id));
   const shown = edges.filter((e) => ids.has(e.source) && ids.has(e.target));
-  const th = "sticky top-0 bg-raised px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3";
+  const th = "sticky top-0 bg-raised px-3 py-1.5 text-left text-xs font-medium text-ink-2";
   return (
     <div className="grid h-full grid-cols-2 divide-x divide-line overflow-hidden">
       <div className="overflow-auto">

@@ -29,28 +29,28 @@ export const edgeKey = (e: GraphEdge) => `${e.type}:${e.source}->${e.target}`;
 const STYLE = [
   { selector: "node", style: {
       "background-color": "data(colour)", shape: "data(shape)", label: "data(label)", width: 22, height: 22,
-      "font-size": 11, color: "#334155", "min-zoomed-font-size": 8, "text-valign": "bottom", "text-margin-y": 4,
+      "font-size": 11, "font-family": "IBM Plex Sans, Arial, sans-serif", color: "#3a4048", "min-zoomed-font-size": 8, "text-valign": "bottom", "text-margin-y": 4,
       "text-wrap": "ellipsis", "text-max-width": "120px", "border-width": 0 } },
-  { selector: "node.root", style: { width: 30, height: 30, "border-width": 3, "border-color": "#0f172a", "font-weight": "bold", "font-size": 11 } },
-  { selector: "node:selected", style: { "border-width": 3, "border-color": "#4f46e5", "overlay-opacity": 0 } },
-  { selector: "node.hover", style: { "border-width": 3, "border-color": "#4f46e5", width: 30, height: 30, "z-index": 20 } },
+  { selector: "node.root", style: { width: 30, height: 30, "border-width": 3, "border-color": "#16191d", "font-weight": 600, "font-size": 11 } },
+  { selector: "node:selected", style: { "border-width": 3, "border-color": "#24548f", "overlay-opacity": 0 } },
+  { selector: "node.hover", style: { "border-width": 3, "border-color": "#24548f", width: 30, height: 30, "z-index": 20 } },
   { selector: "edge", style: {
-      width: 1.5, "line-color": "#94a3b8", "target-arrow-color": "#94a3b8", "target-arrow-shape": "triangle",
-      "curve-style": "bezier", "arrow-scale": 0.8, label: "data(label)", "font-size": 10, color: "#5b6577",
+      width: 1.5, "line-color": "#8c939b", "target-arrow-color": "#8c939b", "target-arrow-shape": "triangle",
+      "curve-style": "bezier", "arrow-scale": 0.8, label: "data(label)", "font-size": 10, "font-family": "IBM Plex Mono, monospace", color: "#5c636c",
       "min-zoomed-font-size": 7, "text-background-color": "#ffffff", "text-background-opacity": 0.9,
       "text-background-padding": "1px" } },
-  { selector: "edge.overview", style: { label: "", width: 1, "line-color": "#cbd5e1", "target-arrow-color": "#cbd5e1" } },
-  { selector: "edge.old", style: { "line-style": "dashed", "line-color": "#b45309", "target-arrow-color": "#b45309", color: "#b45309" } },
+  { selector: "edge.overview", style: { label: "", width: 1, "line-color": "#d0d4d9", "target-arrow-color": "#d0d4d9" } },
+  { selector: "edge.old", style: { "line-style": "dashed", "line-color": "#8a5600", "target-arrow-color": "#8a5600", color: "#8a5600" } },
   // team grouping (overview): a team is a box around the services it owns; collapsed it is one node
   { selector: "node:parent", style: {
-      shape: "round-rectangle", "background-color": "#047857", "background-opacity": 0.05, "border-width": 1,
-      "border-color": "#047857", "border-opacity": 0.35, padding: "14px", label: "data(label)", "text-valign": "top",
-      "text-halign": "center", "text-margin-y": -4, "font-size": 12, "font-weight": "bold", color: "#047857" } },
-  { selector: "node.unowned", style: { "border-style": "dashed", "border-color": "#b45309", "border-opacity": 0.8,
-      "background-color": "#b45309", "background-opacity": 0.04, color: "#b45309" } },
-  { selector: "node.collapsed", style: { width: 40, height: 40, "font-weight": "bold", color: "#047857" } },
-  { selector: "edge.meta", style: { width: "mapData(count, 1, 12, 1.5, 6)", "line-color": "#94a3b8", "target-arrow-color": "#94a3b8" } },
-  { selector: "edge.asof", style: { "line-style": "solid", "line-color": "#94a3b8", "target-arrow-color": "#94a3b8", color: "#5b6577", label: "data(type)" } },
+      shape: "rectangle", "background-color": "#16191d", "background-opacity": 0.02, "border-width": 1,
+      "border-color": "#c1c6cc", padding: "14px", label: "data(label)", "text-valign": "top",
+      "text-halign": "left", "text-margin-y": -4, "font-size": 12, "font-weight": 600, color: "#3a4048" } },
+  { selector: "node.unowned", style: { "border-style": "dashed", "border-color": "#8a5600",
+      "background-opacity": 0, color: "#8a5600" } },
+  { selector: "node.collapsed", style: { width: 40, height: 40, "font-weight": 600, color: "#3a4048" } },
+  { selector: "edge.meta", style: { width: "mapData(count, 1, 12, 1.5, 6)", "line-color": "#8c939b", "target-arrow-color": "#8c939b" } },
+  { selector: "edge.asof", style: { "line-style": "solid", "line-color": "#8c939b", "target-arrow-color": "#8c939b", color: "#5c636c", label: "data(type)" } },
   { selector: "edge.quiet", style: { label: "" } },
   { selector: "edge.quiet.lit", style: { label: "data(label)" } },
   { selector: ".faded", style: { opacity: 0.12, "text-opacity": 0 } },
@@ -350,17 +350,17 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
 
       {/* search (top-left) */}
       <form onSubmit={(e) => { e.preventDefault(); find(); }}
-            className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1 shadow-sm">
+            className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded border border-line bg-panel px-2 py-1 focus-within:border-accent">
         <Search size={14} className="text-ink-3" aria-hidden />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find node" aria-label="Find node"
-               className="w-36 bg-transparent text-xs text-ink outline-none placeholder:text-ink-3" />
+               className="w-36 bg-transparent text-xs text-ink outline-none placeholder:text-ink-3 focus-visible:outline-none" />
       </form>
 
       {/* labels and relationships (bottom-left) */}
       {(labelCounts.length > 0) && (
-        <div className="absolute bottom-3 left-3 z-10 max-h-[calc(100%-5rem)] w-48 overflow-auto rounded-md border border-line bg-panel p-2 text-xs shadow-sm">
+        <div className="absolute bottom-3 left-3 z-10 max-h-[calc(100%-5rem)] w-48 overflow-auto rounded border border-line bg-panel p-2 text-xs">
           <button onClick={() => setLegendOpen((v) => !v)} aria-expanded={legendOpen}
-                  className="mb-1 flex w-full items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-ink-3 hover:text-ink">
+                  className="mb-1 flex w-full items-center justify-between text-xs font-medium text-ink-2 hover:text-ink">
             Labels{legendOpen ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
           </button>
           {legendOpen && labelCounts.map(([label, n]) => (
@@ -372,7 +372,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
               {hiddenLabels.has(label) ? <EyeOff size={12} className="text-ink-3" /> : <Eye size={12} className="text-ink-3" />}
             </button>
           ))}
-          {legendOpen && typeCounts.length > 0 && <p className="mb-1 mt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">Relationships</p>}
+          {legendOpen && typeCounts.length > 0 && <p className="mb-1 mt-2 text-xs font-medium text-ink-2">Relationships</p>}
           {legendOpen && typeCounts.map(([type, n]) => (
             <button key={type} onClick={() => toggle(hiddenTypes, type, setHiddenTypes)} aria-pressed={!hiddenTypes.has(type)}
                     className={`flex w-full items-center gap-1.5 rounded px-1 py-0.5 hover:bg-raised ${hiddenTypes.has(type) ? "opacity-40" : ""}`}>
@@ -385,7 +385,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
       )}
 
       {/* controls (vertical, bottom-right): narrow enough to sit beside the legend on any canvas width */}
-      <div className="absolute bottom-3 right-3 z-10 flex flex-col items-center gap-0.5 rounded-md border border-line bg-panel p-1 shadow-sm">
+      <div className="absolute bottom-3 right-3 z-10 flex flex-col items-center gap-0.5 rounded border border-line bg-panel p-1">
         <IconButton label="Zoom in" onClick={() => zoomBy(1.25)}><ZoomIn size={16} /></IconButton>
         <IconButton label="Zoom out" onClick={() => zoomBy(0.8)}><ZoomOut size={16} /></IconButton>
         <IconButton label="Fit (f)" onClick={() => fitCapped(cy.current)}><Maximize size={16} /></IconButton>
@@ -393,7 +393,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
         <div role="radiogroup" aria-label="Layout" className="flex flex-col gap-0.5">
           {([["force", "Force layout", Share2], ["tree", "Tree layout", Network], ["radial", "Radial layout", Orbit]] as const).map(([l, label, Icon]) => (
             <button key={l} role="radio" aria-checked={layout === l} title={label} aria-label={label} onClick={() => onLayout(l)}
-                    className={`grid h-8 w-8 place-items-center rounded-md ${layout === l ? "bg-accent-soft text-accent" : "text-ink-2 hover:bg-raised"}`}>
+                    className={`grid h-8 w-8 place-items-center rounded ${layout === l ? "bg-accent-soft text-accent" : "text-ink-2 hover:bg-raised"}`}>
               <Icon size={16} />
             </button>
           ))}
@@ -415,7 +415,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
       </div>
 
       {tip && (
-        <div className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full rounded-md border border-line bg-panel px-2 py-1 text-xs shadow-md"
+        <div className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full rounded border border-line bg-panel px-2 py-1 text-xs"
              style={{ left: tip.x, top: tip.y - 16 }}>
           <p className="font-medium text-ink">{tip.name}</p>
           <p className="font-mono text-[11px] text-ink-3">{tip.label} · {tip.id}</p>

@@ -14,14 +14,13 @@ const svcId = (s: string) => (s.includes(":") ? s : `svc:${s}`);
 
 interface Ctx { onOpen: (id: string) => void; onHover: (id: string | null) => void; onApprovals: () => void }
 
-const RULE: Record<Track, string> = { "01": "border-l-t01", "02": "border-l-t02", "03": "border-l-t03" };
-
-function Box({ title, track, children }: { title: string; track: Track; children: ReactNode }) {
+// one container level: a callout is a heading and rows under a rule, not a boxed card with a coloured stripe
+function Box({ title, children }: { title: string; track?: Track; children: ReactNode }) {
   return (
-    <div className={`rounded-md border border-line border-l-[3px] ${RULE[track]} bg-panel px-3 py-2`}>
-      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-3">{title}</p>
+    <section className="border-t border-line pt-2.5">
+      <h4 className="mb-1.5 text-[13px] font-semibold text-ink">{title}</h4>
       <div className="space-y-1.5 text-[13px] text-ink-2">{children}</div>
-    </div>
+    </section>
   );
 }
 

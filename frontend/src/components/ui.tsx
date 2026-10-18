@@ -1,56 +1,31 @@
 "use client";
 
-import { createElement, type ReactNode } from "react";
-import {
-  BookOpen, Bot, Box, FileText, Gavel, History, Lightbulb, ListChecks, MessageSquare, MessagesSquare, Rocket,
-  Server, Siren, Ticket, User, Users, Zap, ArrowRightLeft, FileWarning, Database,
-} from "lucide-react";
-import type React from "react";
+import type { ReactNode } from "react";
 import type { Track } from "@/lib/api";
 import { labelOfId, shortId, styleOf, type Shape } from "@/lib/entities";
 
-const LABEL_ICON: Record<string, typeof Server> = {
-  Service: Server, Person: User, Team: Users, Deployment: Rocket, Incident: Siren, Decision: Gavel, Document: FileText,
-  Episode: History, Lesson: Lightbulb, Procedure: ListChecks, Agent: Bot, Handoff: ArrowRightLeft, Action: Zap,
-  Conversation: MessagesSquare, Message: MessageSquare,
-};
+// Shared primitives. notes/design-direction.md: colour only for meaning, one container level, no icon set for types.
 
-export const iconForLabel = (label: string) => LABEL_ICON[label] ?? Box;
-
-const DOC_ICON: Record<string, typeof Server> = {
-  runbook: BookOpen, postmortem: FileWarning, adr: Gavel, ticket: Ticket, chat: MessageSquare, registry: Database,
-};
-export const iconForDocKind = (kind: string) => DOC_ICON[kind] ?? FileText;
-
-type IconProps = { size?: number; className?: string; style?: React.CSSProperties };
-/** Icon for a node label or a document kind (createElement: the icon is picked from a static map). */
-export const LabelIcon = ({ label, ...p }: { label: string } & IconProps) => createElement(iconForLabel(label), { "aria-hidden": true, ...p });
-export const DocIcon = ({ kind, ...p }: { kind: string } & IconProps) => createElement(iconForDocKind(kind), { "aria-hidden": true, ...p });
-
-// ------------------------------------------------------------------ track tags (neutral outline + number)
+// ------------------------------------------------------------------ track names (text, no colour)
 const TRACK_NAME: Record<Track, string> = { "01": "Act", "02": "Remember", "03": "Brain" };
-const TRACK_RULE: Record<Track, string> = { "01": "bg-t01", "02": "bg-t02", "03": "bg-t03" };
 
 export function TrackTags({ tracks }: { tracks: Track[] }) {
+  const list = [...new Set(tracks)].sort();
+  if (!list.length) return null;
   return (
-    <span className="inline-flex shrink-0 gap-1">
-      {[...new Set(tracks)].sort().map((t) => (
-        <span key={t} className="inline-flex items-center gap-1 rounded border border-line-strong bg-panel px-1.5 py-0.5 text-[11px] font-medium text-ink-2">
-          <span className={`h-2 w-2 rounded-full ${TRACK_RULE[t]}`} aria-hidden />
-          {t} {TRACK_NAME[t]}
-        </span>
-      ))}
+    <span className="shrink-0 font-mono text-[11px] text-ink-3">
+      {list.map((t) => `${t} ${TRACK_NAME[t]}`).join(" · ")}
     </span>
   );
 }
 
-// ------------------------------------------------------------------ status chip (icon-less word, semantic colour)
+// ------------------------------------------------------------------ status word (tint only, no border)
 const TONE = {
-  ok: "bg-ok-soft text-ok border-ok/30",
-  warn: "bg-warn-soft text-warn border-warn/30",
-  bad: "bg-bad-soft text-bad border-bad/30",
-  info: "bg-accent-soft text-accent border-accent/30",
-  muted: "bg-raised text-ink-3 border-line",
+  ok: "bg-ok-soft text-ok",
+  warn: "bg-warn-soft text-warn",
+  bad: "bg-bad-soft text-bad",
+  info: "bg-accent-soft text-accent",
+  muted: "bg-raised text-ink-2",
 } as const;
 export type Tone = keyof typeof TONE;
 
@@ -61,30 +36,29 @@ export const toneOf = (status: string): Tone => STATUS_TONE[status] ?? "muted";
 
 export function Chip({ tone = "muted", children, title }: { tone?: Tone; children: ReactNode; title?: string }) {
   return (
-    <span title={title} className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-medium ${TONE[tone]}`}>
+    <span title={title} className={`inline-flex items-center gap-1 rounded-[2px] px-1.5 py-px text-xs font-medium ${TONE[tone]}`}>
       {children}
     </span>
   );
 }
 
-// ------------------------------------------------------------------ entity chip (type icon + id, clickable)
+// ------------------------------------------------------------------ entity reference (shape of its type + id)
 export function EntityChip({ id, name, struck, compact, onOpen, onHover }: {
-  id: string; name?: string; struck?: boolean; compact?: boolean; // compact: icon only, a citation marker after a name
+  id: string; name?: string; struck?: boolean; compact?: boolean; // compact: shape only, a citation marker after a name
   onOpen?: (id: string) => void; onHover?: (id: string | null) => void;
 }) {
-  const label = labelOfId(id);
   return (
     <button type="button" title={id} aria-label={compact ? id : undefined}
             onClick={(e) => { e.stopPropagation(); onOpen?.(id); }}
             onMouseEnter={() => onHover?.(id)} onMouseLeave={() => onHover?.(null)}
-            className={`inline-flex max-w-full items-center gap-1 rounded border border-line bg-panel px-1.5 py-px align-baseline font-mono text-[12px] text-ink-2 hover:border-line-strong hover:bg-raised ${struck ? "line-through opacity-70" : ""}`}>
-      <LabelIcon label={label} size={12} style={{ color: styleOf(label).colour }} className="shrink-0" />
-      {!compact && <span className="truncate">{name ?? shortId(id)}</span>}
+            className={`inline-flex max-w-full items-center gap-1 rounded-[2px] px-0.5 align-baseline font-mono text-[12px] text-ink-2 hover:bg-raised hover:text-ink ${struck ? "line-through opacity-70" : ""}`}>
+      <ShapeSwatch label={labelOfId(id)} size={9} />
+      {!compact && <span className="truncate underline decoration-line-strong decoration-dotted underline-offset-[3px]">{name ?? shortId(id)}</span>}
     </button>
   );
 }
 
-// ------------------------------------------------------------------ shape swatch (legend)
+// ------------------------------------------------------------------ shape swatch (the canvas vocabulary)
 const POLY: Partial<Record<Shape, string>> = {
   hexagon: "3,1 9,1 11,6 9,11 3,11 1,6",
   triangle: "6,1 11,11 1,11",
@@ -106,13 +80,13 @@ export function ShapeSwatch({ label, size = 12 }: { label: string; size?: number
   );
 }
 
-// ------------------------------------------------------------------ small icon button with tooltip
+// ------------------------------------------------------------------ icon-only control (always labelled)
 export function IconButton({ label, onClick, active, children, disabled }: {
   label: string; onClick: () => void; active?: boolean; children: ReactNode; disabled?: boolean;
 }) {
   return (
     <button type="button" title={label} aria-label={label} aria-pressed={active} onClick={onClick} disabled={disabled}
-            className={`grid h-8 w-8 place-items-center rounded-md text-ink-2 hover:bg-raised disabled:opacity-40 ${active ? "bg-accent-soft text-accent" : ""}`}>
+            className={`grid h-8 w-8 place-items-center rounded text-ink-2 hover:bg-raised disabled:opacity-40 ${active ? "bg-accent-soft text-accent" : ""}`}>
       {children}
     </button>
   );

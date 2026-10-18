@@ -1,32 +1,30 @@
 @import "tailwindcss";
 
-/* Design tokens. Components use the Tailwind names (bg-panel, text-ink-3, border-line, ...);
-   a dark theme only has to redefine the variables in :root. */
+/* Design tokens (notes/design-direction.md: ink on paper, one accent, colour only for meaning).
+   Components use the Tailwind names (bg-panel, text-ink-3, border-line, ...); a dark theme only has to
+   redefine the variables in :root. */
 :root {
-  --bg: #f6f7f9;
+  --bg: #f3f4f5;
   --panel: #ffffff;
-  --raised: #f1f3f6;
-  --line: #e3e6eb;
-  --line-strong: #c9cfd8;
-  --ink: #0f172a;
-  --ink-2: #334155;
-  --ink-3: #5b6577;
-  --accent: #4f46e5;
-  --accent-soft: #eef2ff;
-  --ok: #15803d;
-  --ok-soft: #ecfdf3;
-  --warn: #b45309;
-  --warn-soft: #fffbeb;
-  --bad: #b91c1c;
-  --bad-soft: #fef2f2;
-  --t01: #4f46e5;
-  --t02: #7c3aed;
-  --t03: #0f766e;
+  --raised: #eceef0;
+  --line: #dcdfe3;
+  --line-strong: #c1c6cc;
+  --ink: #16191d;
+  --ink-2: #3a4048;
+  --ink-3: #5c636c;
+  --accent: #24548f;      /* focus, selection, primary action: nothing else */
+  --accent-soft: #e7edf5;
+  --ok: #2f6b3a;
+  --ok-soft: #eaf2ea;
+  --warn: #8a5600;
+  --warn-soft: #f7efe0;
+  --bad: #b42318;
+  --bad-soft: #fbeceb;
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
   --color-bg: var(--bg);
   --color-panel: var(--panel);
   --color-raised: var(--raised);
@@ -43,20 +41,23 @@
   --color-warn-soft: var(--warn-soft);
   --color-bad: var(--bad);
   --color-bad-soft: var(--bad-soft);
-  --color-t01: var(--t01);
-  --color-t02: var(--t02);
-  --color-t03: var(--t03);
 }
 
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-plex-sans), Arial, Helvetica, sans-serif;
 }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+/* numbers line up in tables, timelines and counts */
+.font-mono, .tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* in the base layer so a field inside a framed box can hand its focus ring to the frame (focus-within) */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

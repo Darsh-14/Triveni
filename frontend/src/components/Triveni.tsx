@@ -374,19 +374,24 @@ export default function Triveni() {
   };
 
   // ---------------------------------------------------------------- layout
+  // an index of the demo scenarios, grouped by track (not a grid of identical cards); the number is the shortcut
   const scenarioGrid = (compact: boolean) => (
-    <div className={`grid gap-3 ${compact ? "grid-cols-1" : "grid-cols-1 xl:grid-cols-3"}`}>
+    <div className={compact ? "space-y-3" : "space-y-5 px-5 py-6"}>
       {TRACK_COLUMNS.map((col) => (
-        <div key={col.track} className="space-y-1.5">
-          <p className={`border-l-[3px] pl-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3 ${col.track === "01" ? "border-l-t01" : col.track === "02" ? "border-l-t02" : "border-l-t03"}`}>{col.title}</p>
-          {SCENARIOS.filter((s) => s.tracks.includes(col.track)).map((s) => (
-            <button key={`${col.track}-${s.n}`} disabled={busy} onClick={() => runScenario(s)}
-                    className="flex w-full items-start gap-2 rounded-md border border-line bg-panel px-2.5 py-2 text-left text-[13px] text-ink-2 hover:border-line-strong hover:bg-raised disabled:opacity-50">
-              <kbd className="mt-px rounded border border-line bg-raised px-1 font-mono text-[11px] text-ink-3">{s.n}</kbd>
-              <span className="leading-snug">{s.label}</span>
-            </button>
-          ))}
-        </div>
+        <section key={col.track}>
+          <h3 className="mb-1 text-[13px] font-semibold text-ink">{col.title}</h3>
+          <ul>
+            {SCENARIOS.filter((s) => s.tracks.includes(col.track)).map((s) => (
+              <li key={`${col.track}-${s.n}`}>
+                <button disabled={busy} onClick={() => runScenario(s)}
+                        className="flex w-full items-baseline gap-3 rounded-[2px] px-1 py-1 text-left text-[14px] text-ink-2 hover:bg-raised hover:text-ink disabled:opacity-50">
+                  <span className="w-3 shrink-0 text-right font-mono text-xs text-ink-3">{s.n}</span>
+                  <span>{s.label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       ))}
     </div>
   );
@@ -399,13 +404,13 @@ export default function Triveni() {
         <span className="h-5 w-px bg-line" aria-hidden />
         <label className="flex items-center gap-1.5 text-xs text-ink-3">
           <select value={tenant} onChange={(e) => switchTenant(e.target.value)} aria-label="Tenant"
-                  className="rounded-md border border-line bg-panel px-2 py-1 text-[13px] font-medium text-ink">
+                  className="rounded border border-line bg-panel px-2 py-1 text-[13px] font-medium text-ink">
             {(tenants.length ? tenants : [tenant]).map((t) => <option key={t}>{t}</option>)}
           </select>
           <span className="font-mono">tenant_{tenant}</span>
         </label>
         <button onClick={() => setPaletteOpen(true)}
-                className="ml-4 flex w-64 items-center gap-2 rounded-md border border-line bg-raised px-2.5 py-1 text-[13px] text-ink-3 hover:border-line-strong">
+                className="ml-4 flex w-64 items-center gap-2 rounded border border-line bg-raised px-2.5 py-1 text-[13px] text-ink-3 hover:border-line-strong">
           <Search size={14} aria-hidden /><span className="flex-1 text-left">Search</span>
           <kbd className="rounded border border-line bg-panel px-1 font-mono text-[11px]">{modKey} K</kbd>
         </button>
@@ -432,29 +437,31 @@ export default function Triveni() {
             ["tools", "Tools", Wrench],
           ] as const).map(([key, label, Icon]) => (
             <button key={key} title={label} aria-label={label} aria-pressed={flyout === key} onClick={() => setFlyout(flyout === key ? null : key)}
-                    className={`grid h-9 w-9 place-items-center rounded-md ${flyout === key ? "bg-accent-soft text-accent" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
+                    className={`grid h-9 w-9 place-items-center rounded ${flyout === key ? "bg-accent-soft text-accent" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
               <Icon size={18} />
             </button>
           ))}
           <button title="Approvals" aria-label="Approvals" onClick={openApprovals}
-                  className={`relative grid h-9 w-9 place-items-center rounded-md ${panel?.tab === "approvals" ? "bg-accent-soft text-accent" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
+                  className={`relative grid h-9 w-9 place-items-center rounded ${panel?.tab === "approvals" ? "bg-accent-soft text-accent" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
             <ShieldCheck size={18} />
-            {pendingApprovals > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-warn" aria-hidden />}
+            {pendingApprovals > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-[2px] bg-warn px-0.5 text-center font-mono text-[10px] leading-4 text-white">{pendingApprovals}</span>
+            )}
           </button>
           <button title={panes.threadOpen ? "Hide thread" : "Show thread"} aria-label={panes.threadOpen ? "Hide thread" : "Show thread"}
                   aria-pressed={!panes.threadOpen} onClick={() => resize({ threadOpen: !panes.threadOpen })}
-                  className="mt-auto grid h-9 w-9 place-items-center rounded-md text-ink-3 hover:bg-raised hover:text-ink">
+                  className="mt-auto grid h-9 w-9 place-items-center rounded text-ink-3 hover:bg-raised hover:text-ink">
             {panes.threadOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
           </button>
         </nav>
 
         {/* thread */}
-        <section style={{ width: panes.thread }} className={`relative shrink-0 flex-col bg-bg ${panes.threadOpen ? "flex" : "hidden"}`}>
+        <section style={{ width: panes.thread }} className={`relative shrink-0 flex-col bg-panel ${panes.threadOpen ? "flex" : "hidden"}`}>
           {flyout && <div className="absolute inset-0 z-20 bg-ink/20" onClick={() => setFlyout(null)} aria-hidden />}
           {flyout && (
-            <div className="absolute inset-x-0 top-0 z-30 max-h-[75%] overflow-auto border-b border-line bg-panel p-3 shadow-lg">
+            <div className="absolute inset-x-0 top-0 z-30 max-h-[75%] overflow-auto border-b border-line bg-panel p-3">
               <div className="mb-2 flex items-center">
-                <h2 className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">{flyout}</h2>
+                <h2 className="text-[13px] font-semibold capitalize text-ink">{flyout}</h2>
                 <button onClick={() => setFlyout(null)} aria-label="Close" className="ml-auto rounded p-1 text-ink-3 hover:bg-raised"><X size={14} /></button>
               </div>
               {flyout === "scenarios" && scenarioGrid(true)}
@@ -463,12 +470,12 @@ export default function Triveni() {
               {flyout === "conversations" && (
                 <div className="space-y-1">
                   <button onClick={() => openConversation(null)}
-                          className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-line-strong px-2.5 py-2 text-[13px] font-medium text-ink-2 hover:bg-raised">
+                          className="flex w-full items-center gap-1.5 rounded border border-dashed border-line-strong px-2.5 py-2 text-[13px] font-medium text-ink-2 hover:bg-raised">
                     <Plus size={14} />New
                   </button>
                   {conversations.map((c) => (
                     <button key={c.id} onClick={() => openConversation(c.id)}
-                            className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-raised ${c.id === conversationId ? "bg-accent-soft" : ""}`}>
+                            className={`flex w-full items-center gap-2 rounded px-2.5 py-2 text-left hover:bg-raised ${c.id === conversationId ? "bg-accent-soft" : ""}`}>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13px] text-ink">{c.title}</span>
                         <span className="font-mono text-[11px] text-ink-3">{c.id} · {(c.last_ts ?? c.started_ts).slice(0, 16).replace("T", " ")}</span>
@@ -481,7 +488,7 @@ export default function Triveni() {
             </div>
           )}
 
-          <div className="relative z-0 flex-1 space-y-3 overflow-auto p-4">
+          <div className="relative z-0 flex-1 overflow-auto">
             {entries.length === 0 ? scenarioGrid(false) : entries.map((e) => (
               <EntryCard key={e.id} entry={e} tenant={tenant} active={e.id === activeId}
                          focusStep={graph.entryId === e.id ? focusStep : null}
@@ -497,13 +504,13 @@ export default function Triveni() {
           </div>
 
           <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="border-t border-line bg-panel p-3">
-            <div className="flex items-center gap-2 rounded-lg border border-line-strong bg-panel px-3 py-2 focus-within:border-accent">
+            <div className="flex items-center gap-2 rounded border border-line-strong bg-panel px-3 py-2 focus-within:border-accent">
               <input ref={composer} value={question} onChange={(e) => setQuestion(e.target.value)} disabled={!agentOnline}
                      placeholder={agentOnline ? "Ask" : "Agent offline"} aria-label="Question"
                      className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3 disabled:opacity-60" />
               {conversationId && <span className="font-mono text-[11px] text-ink-3">{conversationId}</span>}
               <button disabled={!agentOnline || busy || !question.trim()} aria-label="Send"
-                      className="grid h-7 w-7 place-items-center rounded-md bg-accent text-white disabled:opacity-40"><Send size={14} /></button>
+                      className="grid h-7 w-7 place-items-center rounded bg-accent text-white disabled:opacity-40"><Send size={14} /></button>
             </div>
           </form>
         </section>
@@ -516,7 +523,7 @@ export default function Triveni() {
         {/* graph */}
         <section className="flex min-w-0 flex-1 flex-col bg-panel">
           <div className="flex h-10 shrink-0 items-center gap-3 border-b border-line px-3 text-xs">
-            <div role="tablist" className="flex rounded-md border border-line p-0.5">
+            <div role="tablist" className="flex rounded border border-line p-0.5">
               {(["graph", "table"] as const).map((v) => (
                 <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)}
                         className={`rounded px-2.5 py-0.5 font-medium capitalize ${view === v ? "bg-raised text-ink" : "text-ink-3 hover:text-ink"}`}>{v}</button>
@@ -525,7 +532,7 @@ export default function Triveni() {
             <span className="min-w-0 flex-1 truncate font-medium text-ink-2" title={graph.title}>{graph.title}</span>
             <span className="tabular-nums text-ink-3">{graph.nodes.length} nodes · {graph.edges.length} edges</span>
             {graph.edges.some((e) => e.superseded) && (
-              <div role="radiogroup" aria-label="Before or after the change" className="flex rounded-md border border-line p-0.5">
+              <div role="radiogroup" aria-label="Before or after the change" className="flex rounded border border-line p-0.5">
                 {(["before", "after", "both"] as const).map((m) => (
                   <button key={m} role="radio" aria-checked={compare === m} onClick={() => setCompare(m)}
                           className={`rounded px-2 py-0.5 font-medium capitalize ${compare === m ? "bg-warn-soft text-warn" : "text-ink-3 hover:text-ink"}`}>{m}</button>
@@ -534,7 +541,7 @@ export default function Triveni() {
             )}
             {focusStep !== null && <Chip tone="info">step {focusStep + 1}<button onClick={() => setFocusStep(null)} aria-label="Clear step"><X size={11} /></button></Chip>}
             {graph.entryId && (
-              <button onClick={() => showOverview(tenant)} className="rounded-md border border-line px-2 py-1 font-medium text-ink-2 hover:bg-raised">Overview</button>
+              <button onClick={() => showOverview(tenant)} className="rounded border border-line px-2 py-1 font-medium text-ink-2 hover:bg-raised">Overview</button>
             )}
           </div>
           <div className="relative isolate min-h-0 flex-1">

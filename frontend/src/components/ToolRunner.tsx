@@ -17,7 +17,7 @@ export default function ToolRunner({ tools, onRun, busy, initial }: {
   const props = tool.input_schema.properties;
   const required = new Set(tool.input_schema.required ?? []);
   const set = (k: string, v: unknown) => setArgs((a) => ({ ...a, [k]: v }));
-  const field = "mt-1 w-full rounded-md border border-line bg-panel px-2 py-1.5 text-sm text-ink";
+  const field = "mt-1 w-full rounded border border-line bg-panel px-2 py-1.5 text-sm text-ink";
 
   const submit = () => {
     const clean = Object.fromEntries(Object.entries(args).filter(([k, v]) => k in props && v !== "" && v !== undefined));
@@ -28,7 +28,7 @@ export default function ToolRunner({ tools, onRun, busy, initial }: {
     <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="space-y-3">
       <div className="flex items-center gap-2">
         <select value={tool.name} onChange={(e) => { setName(e.target.value); setArgs({}); }} aria-label="Tool"
-                className="flex-1 rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-sm text-ink">
+                className="flex-1 rounded border border-line bg-panel px-2 py-1.5 font-mono text-sm text-ink">
           {readTools.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
         </select>
         <TrackTags tracks={tool.tracks} />
@@ -56,7 +56,7 @@ export default function ToolRunner({ tools, onRun, busy, initial }: {
           </label>
         ))}
       </div>
-      <button disabled={busy} className="w-full rounded-md bg-accent py-1.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50">
+      <button disabled={busy} className="w-full rounded bg-accent py-1.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50">
         Run
       </button>
     </form>

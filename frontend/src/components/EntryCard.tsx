@@ -6,7 +6,7 @@ import { api, type Doc, type Guard, type ProgressEvent, type Step, type Track, t
 import { docKindOfId, ID_PATTERN } from "@/lib/entities";
 import Callouts from "./Callouts";
 import StepTimeline from "./StepTimeline";
-import { Chip, DocIcon, EntityChip, TrackTags, type Tone } from "./ui";
+import { Chip, EntityChip, TrackTags, type Tone } from "./ui";
 
 export interface Entry {
   id: string;
@@ -54,15 +54,15 @@ function Pending({ entry, onCancel }: { entry: Entry; onCancel: () => void }) {
   const failed = events.map((e) => /^(\S+) unavailable/.exec(e.msg)?.[1]).filter(Boolean) as string[];
   const provider = [...events].reverse().map((e) => /^(\w+): /.exec(e.msg)?.[1]).find(Boolean);
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs" aria-live="polite">
+    <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs" aria-live="polite">
       <LoaderCircle size={14} className="animate-spin text-accent" aria-label="Working" />
       <span className="tabular-nums text-ink-3">{elapsed}s</span>
-      {failed.map((p) => <Chip key={p} tone="muted"><span className="line-through">{p}</span></Chip>)}
-      {provider && <Chip tone="info">{provider}</Chip>}
+      {failed.map((p) => <span key={p} className="font-mono text-ink-3 line-through">{p}</span>)}
+      {provider && <span className="font-mono text-ink-2">{provider}</span>}
       {tools.map((t, i) => (
-        <Chip key={i} tone={i === tools.length - 1 ? "info" : "ok"}>
-          <span className="font-mono">{t}</span>{i === tools.length - 1 ? " …" : " ✓"}
-        </Chip>
+        <span key={i} className={`font-mono ${i === tools.length - 1 ? "text-accent" : "text-ink-3"}`}>
+          {t}{i === tools.length - 1 ? " …" : " ✓"}
+        </span>
       ))}
       {entry.mode === "agent" && <button onClick={onCancel} className="ml-auto text-ink-3 hover:text-ink">Cancel</button>}
     </div>
@@ -77,12 +77,14 @@ const VERDICT: Record<Verification["verdict"], { word: string; tone: Tone; Icon:
   no_citations: { word: "No citations", tone: "muted", Icon: CircleAlert },
 };
 
-function VerdictChip({ v }: { v: Verification }) {
+const TONE_TEXT: Record<Tone, string> = { ok: "text-ok", warn: "text-warn", bad: "text-bad", info: "text-accent", muted: "text-ink-3" };
+
+function Verdict({ v }: { v: Verification }) {
   const { word, tone, Icon } = VERDICT[v.verdict];
   return (
-    <Chip tone={tone}>
-      <Icon size={12} aria-hidden />{word}{v.verdict !== "no_citations" && <span className="tabular-nums"> {v.grounded.length}/{v.cited}</span>}
-    </Chip>
+    <span className={`inline-flex items-center gap-1 font-medium ${TONE_TEXT[tone]}`}>
+      <Icon size={13} aria-hidden />{word}{v.verdict !== "no_citations" && <span className="font-mono">{v.grounded.length}/{v.cited}</span>}
+    </span>
   );
 }
 
@@ -90,7 +92,7 @@ function VerdictChip({ v }: { v: Verification }) {
 function GuardNotice({ guard }: { guard: Guard }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="mt-2 rounded-md border border-warn/30 bg-warn-soft px-2 py-1.5 text-xs text-warn">
+    <div className="mt-2 rounded bg-warn-soft px-2 py-1.5 text-xs text-warn">
       <p className="flex flex-wrap items-center gap-1.5">
         <span className="font-semibold">Draft rejected</span>
         <span className="text-ink-3">{guard.reason}</span>
@@ -122,20 +124,23 @@ function SourcesRow({ tenant, ids, onOpen }: { tenant: string; ids: string[]; on
   const docs = useDocs(tenant, ids);
   if (!ids.length) return null;
   return (
-    <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-      {ids.map((id, i) => {
-        const d = docs[id];
-        const kind = d?.kind ?? docKindOfId(id);
-        return (
-          <button key={id} onClick={(e) => { e.stopPropagation(); onOpen(id); }} title={id}
-                  className="flex w-44 shrink-0 flex-col gap-0.5 rounded-md border border-line bg-raised px-2 py-1.5 text-left hover:border-line-strong">
-            <span className="flex items-center gap-1 text-[11px] text-ink-3">
-              <span className="tabular-nums">{i + 1}</span><DocIcon kind={kind} size={12} />{kind}
-            </span>
-            <span className="line-clamp-2 text-xs font-medium leading-snug text-ink">{d?.title ?? id}</span>
-          </button>
-        );
-      })}
+    <div>
+      <p className="mb-1 text-xs font-medium text-ink-3">Sources</p>
+      <ol className="space-y-0.5">
+        {ids.map((id, i) => {
+          const d = docs[id];
+          return (
+            <li key={id}>
+              <button onClick={(e) => { e.stopPropagation(); onOpen(id); }} title={id}
+                      className="flex w-full items-baseline gap-2 rounded-[2px] px-1 py-0.5 text-left text-[13px] hover:bg-raised">
+                <span className="w-4 shrink-0 text-right font-mono text-[11px] text-ink-3">{i + 1}</span>
+                <span className="min-w-0 flex-1 truncate text-ink-2">{d?.title ?? id}</span>
+                <span className="shrink-0 font-mono text-[11px] text-ink-3">{d?.kind ?? docKindOfId(id)}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
@@ -211,27 +216,27 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
   const tracks = entryTracks(entry);
 
   return (
-    <article className={`rounded-lg border bg-panel p-4 ${active ? "border-accent ring-1 ring-accent/20" : "border-line"}`}>
+    <article aria-current={active || undefined} className={`border-b border-line px-5 py-5 ${active ? "bg-panel" : ""}`}>
       <button onClick={onSelect} className="w-full text-left">
         <h3 className="text-base font-semibold leading-snug text-ink">{entry.question}</h3>
       </button>
 
       {entry.pending && <Pending entry={entry} onCancel={h.onCancel} />}
-      {entry.error && <p className="mt-2 rounded-md bg-bad-soft px-2 py-1.5 text-xs text-bad">{entry.error}</p>}
+      {entry.error && <p className="mt-2 rounded bg-bad-soft px-2 py-1.5 text-xs text-bad">{entry.error}</p>}
 
       {!entry.pending && !entry.error && (entry.steps.length > 0 || entry.verification || entry.model) && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {entry.verification && <VerdictChip v={entry.verification} />}
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-3">
+          {entry.verification && <Verdict v={entry.verification} />}
           {entry.steps.length > 0 && (
             <button onClick={() => setStepsOpen(!showSteps)} aria-expanded={showSteps}
-                    className="inline-flex items-center gap-0.5 rounded border border-line bg-panel px-1.5 py-0.5 text-xs font-medium text-ink-2 hover:bg-raised">
+                    className="inline-flex items-center gap-0.5 font-medium text-ink-2 hover:text-ink">
               {showSteps ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               {entry.steps.length} tool{entry.steps.length > 1 ? "s" : ""}
             </button>
           )}
-          {entry.ms !== undefined && <span className="text-xs tabular-nums text-ink-3">{(entry.ms / 1000).toFixed(1)} s</span>}
-          {entry.fallbacks?.map((f) => <Chip key={f}><span className="line-through">{f.split(":")[0]}</span></Chip>)}
-          {entry.model && <Chip tone="info">{entry.model}</Chip>}
+          {entry.ms !== undefined && <span className="font-mono">{(entry.ms / 1000).toFixed(1)} s</span>}
+          {entry.fallbacks?.map((f) => <span key={f} className="font-mono line-through">{f.split(":")[0]}</span>)}
+          {entry.model && <span className="truncate font-mono">{entry.model}</span>}
           <span className="ml-auto"><TrackTags tracks={tracks} /></span>
         </div>
       )}
@@ -250,12 +255,12 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
                       onStep={h.onStep} onCypher={h.onCypher} />
       )}
 
-      {sources.length > 0 && <div className="mt-3"><SourcesRow tenant={tenant} ids={sources} onOpen={h.onOpen} /></div>}
+      {sources.length > 0 && <div className="mt-4"><SourcesRow tenant={tenant} ids={sources} onOpen={h.onOpen} /></div>}
 
-      {entry.answer && <div className="mt-3"><AnswerText text={entry.answer} h={h} /></div>}
+      {entry.answer && <div className="mt-4"><AnswerText text={entry.answer} h={h} /></div>}
 
       {entry.steps.length > 0 && (
-        <div className="mt-3">
+        <div className="mt-4">
           <Callouts steps={entry.steps} onOpen={h.onOpen} onHover={h.onHover} onApprovals={h.onApprovals} />
         </div>
       )}
@@ -272,7 +277,7 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
                 {entry.conversationId && <EntityChip id={entry.conversationId} onOpen={h.onOpen} />}
                 {entry.episode && <EntityChip id={entry.episode} onOpen={h.onOpen} />}
               </div>
-              <pre className="max-h-64 overflow-auto rounded-md bg-raised p-2 font-mono text-[11px] text-ink-2">
+              <pre className="max-h-64 overflow-auto rounded bg-raised p-2 font-mono text-[11px] text-ink-2">
                 {JSON.stringify(entry.data ?? entry.steps.map((s) => ({ tool: s.tool, data: s.data })), null, 2)}
               </pre>
             </div>

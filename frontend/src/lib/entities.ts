@@ -2,25 +2,26 @@
 // a shape and a colour, so node types never differ by colour alone.
 export type Shape = "round-rectangle" | "ellipse" | "hexagon" | "tag" | "triangle" | "diamond" | "rectangle" | "octagon" | "round-tag";
 
+// Muted, distinct hues (not a stock palette), each at least 3:1 against white; the shape carries the type too.
 export const LABEL_STYLE: Record<string, { colour: string; shape: Shape }> = {
-  Service: { colour: "#2563eb", shape: "round-rectangle" },
-  Person: { colour: "#059669", shape: "ellipse" },
-  Team: { colour: "#047857", shape: "hexagon" },
-  Deployment: { colour: "#0d9488", shape: "tag" },
-  Incident: { colour: "#dc2626", shape: "triangle" },
-  Decision: { colour: "#d97706", shape: "diamond" },
-  Document: { colour: "#64748b", shape: "rectangle" },
-  Episode: { colour: "#7c3aed", shape: "octagon" },
-  Lesson: { colour: "#6d28d9", shape: "octagon" },
-  Procedure: { colour: "#8b5cf6", shape: "octagon" },
-  Agent: { colour: "#475569", shape: "octagon" },
-  Handoff: { colour: "#a21caf", shape: "round-tag" },
-  Action: { colour: "#9333ea", shape: "round-tag" },
-  Conversation: { colour: "#6366f1", shape: "octagon" },
-  Message: { colour: "#818cf8", shape: "octagon" },
+  Service: { colour: "#3a6ea5", shape: "round-rectangle" },
+  Person: { colour: "#4a7a52", shape: "ellipse" },
+  Team: { colour: "#2f5a3a", shape: "hexagon" },
+  Deployment: { colour: "#3f7f7a", shape: "tag" },
+  Incident: { colour: "#b42318", shape: "triangle" },
+  Decision: { colour: "#a8680f", shape: "diamond" },
+  Document: { colour: "#6b717a", shape: "rectangle" },
+  Episode: { colour: "#6e5a7e", shape: "octagon" },
+  Lesson: { colour: "#5d4b6e", shape: "octagon" },
+  Procedure: { colour: "#7d6a8c", shape: "octagon" },
+  Agent: { colour: "#4b525a", shape: "octagon" },
+  Handoff: { colour: "#8a5a6e", shape: "round-tag" },
+  Action: { colour: "#7a4a5e", shape: "round-tag" },
+  Conversation: { colour: "#5b6b8a", shape: "octagon" },
+  Message: { colour: "#7a879e", shape: "octagon" },
 };
 
-export const styleOf = (label: string) => LABEL_STYLE[label] ?? { colour: "#94a3b8", shape: "ellipse" as Shape };
+export const styleOf = (label: string) => LABEL_STYLE[label] ?? { colour: "#9aa1aa", shape: "ellipse" as Shape };
 
 const PREFIX_LABEL: Record<string, string> = {
   svc: "Service", per: "Person", team: "Team", dep: "Deployment", inc: "Incident", adr: "Decision", dec: "Decision",

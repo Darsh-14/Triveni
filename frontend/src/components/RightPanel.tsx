@@ -6,7 +6,7 @@ import { api, type Doc, type NodeDetail, type Step } from "@/lib/api";
 import { ID_PATTERN } from "@/lib/entities";
 import type { AgentResult } from "@/lib/api";
 import Approvals from "./Coordination";
-import { DocIcon, EntityChip, ShapeSwatch, TrackTags } from "./ui";
+import { EntityChip, ShapeSwatch, TrackTags } from "./ui";
 
 export type PanelTab = "node" | "cypher" | "source" | "approvals";
 export interface PanelState { tab: PanelTab; nodeId?: string; step?: Step; docId?: string }
@@ -22,19 +22,19 @@ function Cypher({ text }: { text: string }) {
     let i = 0;
     for (const m of s.matchAll(KEYWORDS)) {
       out.push(s.slice(i, m.index));
-      out.push(<span key={`${key}-${m.index}`} className="font-semibold text-[#93c5fd]">{m[0]}</span>);
+      out.push(<span key={`${key}-${m.index}`} className="font-semibold text-ink">{m[0]}</span>);
       i = (m.index ?? 0) + m[0].length;
     }
     out.push(s.slice(i));
   };
   for (const m of text.matchAll(token)) {
     pushPlain(text.slice(last, m.index), `p${last}`);
-    const cls = m[1] ? "text-[#fbbf24]" : m[2] ? "text-[#86efac]" : m[3] ? "text-[#94a3b8] italic" : "text-[#f9a8d4]";
+    const cls = m[1] ? "text-accent" : m[2] ? "text-ok" : m[3] ? "text-ink-3 italic" : "text-ink-2";
     out.push(<span key={`t${m.index}`} className={cls}>{m[0]}</span>);
     last = (m.index ?? 0) + m[0].length;
   }
   pushPlain(text.slice(last), "end");
-  return <pre className="overflow-auto whitespace-pre rounded-md bg-[#0f172a] p-3 font-mono text-[12px] leading-relaxed text-[#e2e8f0]">{out}</pre>;
+  return <pre className="overflow-auto whitespace-pre rounded border border-line bg-raised p-3 font-mono text-[12px] leading-relaxed text-ink-2">{out}</pre>;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -63,7 +63,7 @@ function Section({ title, label, count, children, defaultOpen = true }: {
   return (
     <section>
       <button onClick={() => setOpen(!open)} aria-expanded={open}
-              className="mb-1 flex w-full items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-3 hover:text-ink">
+              className="mb-1 flex w-full items-center gap-1.5 text-xs font-medium text-ink-2 hover:text-ink">
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         {label && <ShapeSwatch label={label} size={10} />}
         <span className="flex-1 text-left">{title}</span>
@@ -129,14 +129,14 @@ function NodeTab({ tenant, id, onOpen, onExpand }: {
       <div className="flex gap-1.5">
         {([1, 2] as const).map((d) => (
           <button key={d} onClick={() => onExpand(n.id, d)}
-                  className="inline-flex items-center gap-1 rounded-md border border-line-strong px-2 py-1 text-xs font-medium text-ink-2 hover:bg-raised">
+                  className="inline-flex items-center gap-1 rounded border border-line-strong px-2 py-1 text-xs font-medium text-ink-2 hover:bg-raised">
             <Expand size={12} />+{d} hop{d > 1 ? "s" : ""}
           </button>
         ))}
       </div>
 
       {(people.some(([, l]) => l.length) || facts.length > 0) && (
-        <div className="grid grid-cols-[6rem_1fr] gap-x-2 gap-y-1.5 rounded-md border border-line bg-raised/50 p-2.5 text-xs">
+        <div className="grid grid-cols-[6rem_1fr] gap-x-2 gap-y-1.5 border-y border-line py-2.5 text-xs">
           {people.filter(([, l]) => l.length).map(([k, l]) => (
             <Fragment key={k}>
               <span className="pt-0.5 text-ink-3">{k}</span>
@@ -201,7 +201,7 @@ function CypherTab({ step }: { step: Step }) {
         <tbody>
           {Object.entries(step.params).map(([k, v]) => (
             <tr key={k} className="border-t border-line">
-              <td className="w-28 py-1 pr-2 font-mono text-[11px] text-[#b45309]">${k}</td>
+              <td className="w-28 py-1 pr-2 font-mono text-[11px] text-accent">${k}</td>
               <td className="break-all py-1 font-mono text-[11px] text-ink-2">{JSON.stringify(v)}</td>
             </tr>
           ))}
@@ -233,10 +233,10 @@ function SourceTab({ tenant, id, onOpen }: { tenant: string; id: string; onOpen:
   body.push(d.text.slice(last));
   return (
     <div className="space-y-3">
-      <p className="flex items-center gap-1.5 text-xs text-ink-3"><DocIcon kind={d.kind} size={14} />{d.kind} · {d.ts.slice(0, 10)}{d.author ? ` · ${d.author}` : ""}</p>
+      <p className="font-mono text-xs text-ink-3">{d.kind} · {d.ts.slice(0, 10)}{d.author ? ` · ${d.author}` : ""}</p>
       <h3 className="text-sm font-semibold text-ink">{d.title}</h3>
       <p className="font-mono text-[11px] text-ink-3">{d.id} · {d.source}</p>
-      <div className="whitespace-pre-wrap rounded-md bg-raised p-3 text-[13px] leading-relaxed text-ink-2">{body}</div>
+      <div className="whitespace-pre-wrap rounded bg-raised p-3 text-[13px] leading-relaxed text-ink-2">{body}</div>
       {d.mentions.length > 0 && (
         <div className="flex flex-wrap gap-1">{d.mentions.map((m) => <EntityChip key={m} id={m} onOpen={onOpen} />)}</div>
       )}
@@ -256,7 +256,7 @@ export default function RightPanel({ width, state, tenant, refreshKey, onTab, on
 }) {
   const available = (t: PanelTab) => t === "approvals" || (t === "node" ? !!state.nodeId : t === "cypher" ? !!state.step : !!state.docId);
   return (
-    <aside style={{ width }} className="flex h-full shrink-0 flex-col bg-panel shadow-[-4px_0_12px_rgba(15,23,42,0.04)]">
+    <aside style={{ width }} className="flex h-full shrink-0 flex-col bg-panel">
       <div className="flex items-center gap-1 border-b border-line px-2 py-1.5">
         <div role="tablist" className="flex flex-1 gap-0.5">
           {TABS.map(({ tab, label }) => (

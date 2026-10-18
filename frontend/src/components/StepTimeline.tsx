@@ -42,25 +42,25 @@ export default function StepTimeline({ steps, events, totalMs, focusStep, onStep
   const fmt = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`);
 
   return (
-    <div className="mt-2 rounded-md border border-line">
+    <div className="mt-3 border-y border-line">
       <ol className="divide-y divide-line">
         {steps.map((s, i) => (
-          <li key={i} className={`grid grid-cols-[1rem_minmax(0,9.5rem)_1fr_3.5rem_1.25rem] items-center gap-2 px-2 py-1.5 text-xs ${focusStep === i ? "bg-accent-soft" : ""}`}>
+          <li key={i} className={`grid grid-cols-[1rem_minmax(0,9.5rem)_1fr_3.5rem_1.25rem] items-center gap-2 px-1 py-1.5 text-xs ${focusStep === i ? "bg-accent-soft" : ""}`}>
             <span className="tabular-nums text-ink-3">{i + 1}</span>
             <button onClick={() => onStep(focusStep === i ? null : i)}
                     title={[s.explanation, resolvedTitle(s)].filter(Boolean).join(" | resolved: ")} className="min-w-0 text-left">
               <span className={`block truncate font-mono font-medium ${s.ok ? "text-ink" : "text-bad"}`}>
                 {s.tool}
                 {s.outcome && OUTCOME[s.outcome] && (
-                  <span className={`ml-1.5 font-sans text-[10px] font-semibold uppercase ${OUTCOME[s.outcome].cls}`}
+                  <span className={`ml-1.5 font-sans text-[11px] font-medium ${OUTCOME[s.outcome].cls}`}
                         title={OUTCOME[s.outcome].title}>{OUTCOME[s.outcome].label}</span>
                 )}
               </span>
               <span className="block truncate font-mono text-[11px] text-ink-3">{Object.values(s.input).map(String).join(" · ")}</span>
             </button>
             <button onClick={() => onStep(focusStep === i ? null : i)} aria-label={`Highlight step ${i + 1}`}
-                    className="relative h-4 rounded-sm bg-raised">
-              <span className={`absolute inset-y-0 rounded-sm ${!s.ok ? "bg-bad" : focusStep === i ? "bg-accent" : "bg-accent/60"}`}
+                    className="relative h-2.5 bg-raised">
+              <span className={`absolute inset-y-0 ${!s.ok ? "bg-bad" : focusStep === i ? "bg-accent" : "bg-ink-3"}`}
                     style={{ left: pct(starts[i]), width: `max(3px, ${pct(s.ms)})` }} />
             </button>
             <span className="text-right tabular-nums text-ink-3">{fmt(s.ms)}</span>
@@ -71,7 +71,7 @@ export default function StepTimeline({ steps, events, totalMs, focusStep, onStep
           </li>
         ))}
       </ol>
-      <div className="grid grid-cols-[1rem_minmax(0,9.5rem)_1fr_3.5rem_1.25rem] gap-2 border-t border-line px-2 py-1 text-[11px] tabular-nums text-ink-3">
+      <div className="grid grid-cols-[1rem_minmax(0,9.5rem)_1fr_3.5rem_1.25rem] gap-2 border-t border-line px-1 py-1 font-mono text-[11px] text-ink-3">
         <span /><span />
         <span className="flex justify-between"><span>0</span><span>{fmt(Math.round(total / 2))}</span><span>{fmt(total)}</span></span>
         <span /><span />

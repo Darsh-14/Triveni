@@ -73,11 +73,11 @@ export default function Approvals({ tenant, refreshKey, onOpen, onResult, onChan
 
   return (
     <div className="space-y-5 text-xs">
-      {error && <p className="rounded-md bg-bad-soft px-2 py-1.5 text-bad">{error}</p>}
+      {error && <p className="rounded bg-bad-soft px-2 py-1.5 text-bad">{error}</p>}
 
       <section>
         <div className="mb-2 flex items-center gap-2">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">Actions · {actions.length}</h3>
+          <h3 className="text-[13px] font-semibold text-ink">Actions <span className="font-mono font-normal text-ink-3">{actions.length}</span></h3>
           <label className="ml-auto flex items-center gap-1 text-ink-3">
             Approver
             <select value={approver} onChange={(e) => setApprover(e.target.value)}
@@ -87,9 +87,9 @@ export default function Approvals({ tenant, refreshKey, onOpen, onResult, onChan
           </label>
         </div>
         {sorted.length === 0 && <p className="text-ink-3">No actions</p>}
-        <div className="space-y-2">
+        <div className="divide-y divide-line border-y border-line">
           {sorted.map((a) => (
-            <div key={a.id} className={`rounded-md border p-2.5 ${a.status === "proposed" ? "border-warn/40 bg-warn-soft/40" : "border-line"}`}>
+            <div key={a.id} className={`py-2.5 ${a.status === "proposed" ? "bg-warn-soft/50 px-2 -mx-2" : ""}`}>
               <div className="flex flex-wrap items-center gap-1.5">
                 <Chip tone={toneOf(a.status)}>{a.status}</Chip>
                 <span className="font-mono font-semibold text-ink">{a.kind}</span>
@@ -106,9 +106,9 @@ export default function Approvals({ tenant, refreshKey, onOpen, onResult, onChan
               {a.status === "proposed" && (
                 <div className="mt-2 flex gap-1.5">
                   <button disabled={busy || !approver} onClick={() => decide(a.id, true)}
-                          className="rounded-md bg-accent px-3 py-1 font-medium text-white hover:bg-accent/90 disabled:opacity-50">Approve</button>
+                          className="rounded bg-accent px-3 py-1 font-medium text-white hover:bg-accent/90 disabled:opacity-50">Approve</button>
                   <button disabled={busy || !approver} onClick={() => decide(a.id, false)}
-                          className="rounded-md border border-line-strong px-3 py-1 font-medium text-ink-2 hover:bg-raised disabled:opacity-50">Reject</button>
+                          className="rounded border border-line-strong px-3 py-1 font-medium text-ink-2 hover:bg-raised disabled:opacity-50">Reject</button>
                 </div>
               )}
             </div>
@@ -118,16 +118,16 @@ export default function Approvals({ tenant, refreshKey, onOpen, onResult, onChan
 
       <section>
         <div className="mb-2 flex items-center gap-2">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">Handoffs · {handoffs.length}</h3>
+          <h3 className="text-[13px] font-semibold text-ink">Handoffs <span className="font-mono font-normal text-ink-3">{handoffs.length}</span></h3>
           <button disabled={busy} onClick={runRemediation}
-                  className="ml-auto inline-flex items-center gap-1 rounded-md border border-line-strong px-2 py-1 font-medium text-ink-2 hover:bg-raised disabled:opacity-50">
+                  className="ml-auto inline-flex items-center gap-1 rounded border border-line-strong px-2 py-1 font-medium text-ink-2 hover:bg-raised disabled:opacity-50">
             <Bot size={14} />{busy ? "Running…" : "Run remediation"}
           </button>
         </div>
         {handoffs.length === 0 && <p className="text-ink-3">No handoffs</p>}
-        <div className="space-y-2">
+        <div className="divide-y divide-line border-y border-line">
           {handoffs.map((h) => (
-            <div key={h.id} className="rounded-md border border-line p-2.5">
+            <div key={h.id} className="py-2.5">
               <div className="flex flex-wrap items-center gap-1.5">
                 <EntityChip id={h.from} onOpen={onOpen} /><span className="text-ink-3">→</span><EntityChip id={h.to} onOpen={onOpen} />
                 {h.incident && <EntityChip id={h.incident} onOpen={onOpen} />}

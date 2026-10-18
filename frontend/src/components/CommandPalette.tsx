@@ -89,26 +89,26 @@ export default function CommandPalette({ open, onClose, items }: { open: boolean
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-ink/30 pt-[12vh]" onMouseDown={onClose}>
       <div role="dialog" aria-modal="true" aria-label="Command palette" onMouseDown={(e) => e.stopPropagation()}
-           className="w-[560px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-line bg-panel shadow-2xl">
+           className="w-[560px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-line bg-panel">
         <div className="flex items-center gap-2 border-b border-line px-3">
           <Search size={16} className="text-ink-3" aria-hidden />
           <input ref={input} value={query} onChange={(e) => { setQuery(e.target.value); setActive(0); }} onKeyDown={onKey}
                  role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list"
                  aria-activedescendant={flat[active] ? `palette-${active}` : undefined} placeholder="Search" aria-label="Search"
-                 className="h-12 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3" />
+                 className="h-12 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3 focus-visible:outline-none" />
           <kbd className="rounded border border-line bg-raised px-1.5 font-mono text-[11px] text-ink-3">Esc</kbd>
         </div>
         <div ref={list} id="palette-list" role="listbox" className="max-h-[55vh] overflow-auto p-1.5">
           {flat.length === 0 && <p className="px-3 py-6 text-center text-sm text-ink-3">No results</p>}
           {results.map((g) => (
             <div key={g.group} role="group" aria-label={g.group} className="mb-1">
-              <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">{g.group}</p>
+              <p className="px-2 pb-1 pt-2 text-xs font-medium text-ink-2">{g.group}</p>
               {g.items.map((it) => {
                 const i = indexOf.get(it.id)!;
                 return (
                   <div key={it.id} id={`palette-${i}`} data-index={i} role="option" aria-selected={i === active}
                        onMouseMove={() => setActive(i)} onClick={() => choose(it)}
-                       className={`flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] ${i === active ? "bg-accent-soft text-ink" : "text-ink-2"}`}>
+                       className={`flex cursor-pointer items-center gap-2.5 rounded px-2 py-1.5 text-[13px] ${i === active ? "bg-accent-soft text-ink" : "text-ink-2"}`}>
                     <span className="grid w-4 shrink-0 place-items-center text-ink-3">{it.icon}</span>
                     <span className="min-w-0 flex-1 truncate">{it.label}</span>
                     {it.hint && <span className="shrink-0 font-mono text-[11px] text-ink-3">{it.hint}</span>}
