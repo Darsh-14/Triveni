@@ -178,7 +178,7 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
         .linkLabel((l: L) => l.type)
         .linkDirectionalArrowLength(5).linkDirectionalArrowRelPos(1)
         .linkCurvature(0.22).linkCurveRotation((l: L) => (hashOf(l.id) % 628) / 100)
-        .linkDirectionalParticleWidth(1.4).linkDirectionalParticleSpeed(0.006)
+        .linkDirectionalParticleWidth(3.2).linkDirectionalParticleSpeed(0.008)
         // drag a node to stretch the map: it stays where dropped, and its curved lines bend with it
         .onNodeDragEnd((n: N) => { const m = n as N & { x?: number; y?: number; z?: number; fx?: number; fy?: number; fz?: number }; m.fx = m.x; m.fy = m.y; m.fz = m.z; })
         .warmupTicks(30).cooldownTicks(140)
@@ -423,8 +423,8 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
       })
       .linkWidth((l: L) => (state.litLinks.has(l.id) ? (pinned?.id === l.id ? 1.8 : 1.4) : state.faded?.(l.id) ? 0.3
         : Math.min(0.6 + ((lineCount.get(l.id) ?? 1) - 1) * 0.3, 3)))
-      .linkDirectionalParticles((l: L) => (state.litLinks.has(l.id) ? 3 : 0)) // flow only on the highlighted lines
-      .linkDirectionalParticleColor(() => ACCENT)
+      .linkDirectionalParticles((l: L) => (state.litLinks.has(l.id) ? 4 : 0)) // flow only on the highlighted lines
+      .linkDirectionalParticleColor(() => "#ffd1df") // pale pink: stands out on the neon line
       .linkDirectionalArrowColor((l: L) => (state.litLinks.has(l.id) ? ACCENT : l.old && compare !== "before" ? OLD : LINK));
   }, [state, ready, hiddenLabels, compare, overview, pinned, lineCount]);
 
