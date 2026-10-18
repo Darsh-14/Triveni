@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Copy, Expand, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Copy, Expand, X } from "./icons";
 import { api, type Doc, type NodeDetail, type Step } from "@/lib/api";
 import { ID_PATTERN } from "@/lib/entities";
 import type { AgentResult } from "@/lib/api";
@@ -41,7 +41,7 @@ function CopyButton({ text }: { text: string }) {
   const [done, setDone] = useState(false);
   return (
     <button onClick={() => { navigator.clipboard?.writeText(text); setDone(true); setTimeout(() => setDone(false), 1200); }}
-            className="inline-flex items-center gap-1 rounded border border-line px-1.5 py-0.5 text-xs text-ink-2 hover:bg-raised">
+            className="btn btn-sm">
       <Copy size={12} />{done ? "Copied" : "Copy"}
     </button>
   );
@@ -134,7 +134,7 @@ function NodeTab({ tenant, id, onOpen, onExpand }: {
       <div className="flex gap-1.5">
         {([1, 2] as const).map((d) => (
           <button key={d} onClick={() => onExpand(n.id, d)}
-                  className="inline-flex items-center gap-1 rounded border border-line-strong px-2 py-1 text-xs font-medium text-ink-2 hover:bg-raised">
+                  className="btn btn-sm">
             <Expand size={12} />+{d} hop{d > 1 ? "s" : ""}
           </button>
         ))}
@@ -266,7 +266,7 @@ export default function RightPanel({ width, state, tenant, refreshKey, onTab, on
         <div role="tablist" className="flex flex-1 gap-0.5">
           {TABS.map(({ tab, label }) => (
             <button key={tab} role="tab" aria-selected={state.tab === tab} disabled={!available(tab)} onClick={() => onTab(tab)}
-                    className={`rounded px-2 py-1 text-xs font-medium disabled:opacity-35 ${state.tab === tab ? "bg-raised text-ink" : "text-ink-3 hover:text-ink"}`}>
+                    className="tab text-xs disabled:opacity-35">
               {label}
             </button>
           ))}

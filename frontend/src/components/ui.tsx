@@ -8,13 +8,19 @@ import { labelOfId, shortId, styleOf, type Shape } from "@/lib/entities";
 
 // ------------------------------------------------------------------ track names (text, no colour)
 const TRACK_NAME: Record<Track, string> = { "01": "Act", "02": "Remember", "03": "Brain" };
+export const TRACK_COLOUR: Record<Track, string> = { "01": "var(--c-orange)", "02": "var(--c-teal)", "03": "var(--c-lilac)" };
 
 export function TrackTags({ tracks }: { tracks: Track[] }) {
   const list = [...new Set(tracks)].sort();
   if (!list.length) return null;
   return (
-    <span className="shrink-0 font-mono text-[11px] text-ink-3">
-      {list.map((t) => `${t} ${TRACK_NAME[t]}`).join(" · ")}
+    <span className="inline-flex shrink-0 gap-1">
+      {list.map((t) => (
+        <span key={t} className="rounded-md px-1.5 py-px text-[11px] font-medium"
+              style={{ color: TRACK_COLOUR[t], background: `color-mix(in srgb, ${TRACK_COLOUR[t]} 16%, transparent)` }}>
+          {t} {TRACK_NAME[t]}
+        </span>
+      ))}
     </span>
   );
 }
@@ -47,13 +53,14 @@ export function EntityChip({ id, name, struck, compact, onOpen, onHover }: {
   id: string; name?: string; struck?: boolean; compact?: boolean; // compact: shape only, a citation marker after a name
   onOpen?: (id: string) => void; onHover?: (id: string | null) => void;
 }) {
+  const colour = styleOf(labelOfId(id)).colour;
   return (
     <button type="button" title={id} aria-label={compact ? id : undefined}
             onClick={(e) => { e.stopPropagation(); onOpen?.(id); }}
             onMouseEnter={() => onHover?.(id)} onMouseLeave={() => onHover?.(null)}
-            className={`inline-flex max-w-full items-center gap-1 rounded-[2px] px-0.5 align-baseline font-mono text-[12px] text-ink-2 hover:bg-raised hover:text-ink ${struck ? "line-through opacity-70" : ""}`}>
-      <ShapeSwatch label={labelOfId(id)} size={9} />
-      {!compact && <span className="truncate underline decoration-line-strong decoration-dotted underline-offset-[3px]">{name ?? shortId(id)}</span>}
+            style={{ color: colour, background: `color-mix(in srgb, ${colour} 14%, transparent)` }}
+            className={`inline-flex max-w-full items-center rounded-md px-1.5 align-baseline font-mono text-[12px] hover:brightness-125 ${compact ? "h-4 w-3 py-0" : "py-px"} ${struck ? "line-through opacity-60" : ""}`}>
+      {!compact && <span className="truncate">{name ?? shortId(id)}</span>}
     </button>
   );
 }
@@ -86,7 +93,7 @@ export function IconButton({ label, onClick, active, children, disabled }: {
 }) {
   return (
     <button type="button" title={label} aria-label={label} aria-pressed={active} onClick={onClick} disabled={disabled}
-            className={`grid h-8 w-8 place-items-center rounded text-ink-2 hover:bg-raised disabled:opacity-40 ${active ? "bg-accent-soft text-accent-ink" : ""}`}>
+            className={`grid h-8 w-8 place-items-center rounded-lg disabled:opacity-40 ${active ? "bg-accent text-white" : "bg-raised text-ink-2 hover:bg-line-strong hover:text-ink"}`}>
       {children}
     </button>
   );

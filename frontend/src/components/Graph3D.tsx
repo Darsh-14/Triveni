@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ForceGraph3DInstance } from "3d-force-graph";
 import type { Group, Mesh, MeshLambertMaterial, Object3D } from "three";
 import type SpriteTextType from "three-spritetext";
-import { ArrowRight, ChevronDown, ChevronUp, Eye, EyeOff, Maximize, Network, Orbit, RotateCcw, Search, Share2, SunDim, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronUp, Eye, EyeOff, Maximize, Network, Orbit, RotateCcw, Search, Share2, SunDim, X, ZoomIn, ZoomOut } from "./icons";
 import type { GraphEdge, GraphNode } from "@/lib/api";
 import { styleOf, type Shape } from "@/lib/entities";
 import { edgeKey, type Compare, type LayoutName } from "./GraphCanvas";
@@ -35,11 +35,11 @@ type L = { id: string; source: string | N; target: string | N; type: string; old
 type Parts = { group: Group; mesh: Mesh; label: SpriteTextType };
 
 const ACCENT = "#ff1053";
-const INK = "#f1f1ec";
-const PAGE = "#0f100e";
-const LINK = "#5f6450";
-const LINK_FAINT = "#23251f";
-const OWNS_LINK = "#2f3228";
+const INK = "#ffffff";
+const PAGE = "#03040a"; // deep space
+const LINK = "#6a7090";
+const LINK_FAINT = "#1a1d2b";
+const OWNS_LINK = "#2c3048";
 const OLD = "#f2c14e";
 const LABEL_LIMIT = 30; // above this many nodes, only some labels are drawn
 
@@ -68,7 +68,14 @@ async function applyFog(g: ForceGraph3DInstance<N, L>) {
   const cam = g.cameraPosition();
   const target = (g.controls() as { target?: { x: number; y: number; z: number } }).target ?? { x: 0, y: 0, z: 0 };
   const d = Math.hypot(cam.x - target.x, cam.y - target.y, cam.z - target.z) || 300;
-  g.scene().fog = new T.Fog(PAGE, d * 0.75, d * 2.4);
+  g.scene().fog = new T.Fog(PAGE, d * 0.95, d * 3.2);
+}
+
+/** Move the camera towards its target by a factor (0.8 = 20% closer). */
+function closer(g: ForceGraph3DInstance<N, L>, f: number) {
+  const c = g.cameraPosition();
+  const t = (g.controls() as { target?: { x: number; y: number; z: number } }).target ?? { x: 0, y: 0, z: 0 };
+  g.cameraPosition({ x: t.x + (c.x - t.x) * f, y: t.y + (c.y - t.y) * f, z: t.z + (c.z - t.z) * f }, t, 300);
 }
 
 export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onLayout, selected, onSelect, onExpand, compare = "both", onUnavailable }: Props) {
@@ -82,6 +89,7 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
   useEffect(() => { handlers.current = { onSelect, onExpand }; }, [onSelect, onExpand]);
 
   const [ready, setReady] = useState(false);
+  const [built, setBuilt] = useState(0); // meshes exist: the visual pass has something to style
   const [hoverNode, setHoverNode] = useState<string | null>(null);
   const [hoverLink, setHoverLink] = useState<string | null>(null);
   const [pinned, setPinned] = useState<{ id: string; type: string; from: string; to: string } | null>(null);
@@ -132,8 +140,8 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
         .onEngineStop(() => {
           if (!fitNext.current) return;
           fitNext.current = false;
-          g.zoomToFit(500, 60);
-          setTimeout(() => applyFog(g), 550);
+          g.zoomToFit(500, 12);
+          setTimeout(() => { closer(g, 0.8); applyFog(g); }, 560);
         });
       g.d3Force("collide", forceCollide<N>(11) as never); // nodes never overlap
       // overview: every service is pulled towards its team, so teams read as separate clusters
@@ -157,6 +165,17 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
       observer = new ResizeObserver(resize);
       observer.observe(host.current);
       resize();
+      // a starfield far behind the graph (outside the fog, so the stars stay sharp)
+      const T = await import("three");
+      const count = 2600, pos = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const r = 1600 + Math.random() * 2400, th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+        pos.set([r * Math.sin(ph) * Math.cos(th), r * Math.sin(ph) * Math.sin(th), r * Math.cos(ph)], i * 3);
+      }
+      const geo = new T.BufferGeometry();
+      geo.setAttribute("position", new T.BufferAttribute(pos, 3));
+      g.scene().add(new T.Points(geo, new T.PointsMaterial({ color: "#c8d0ff", size: 2.2, sizeAttenuation: false, fog: false,
+                                                            transparent: true, opacity: 0.75 })));
       setReady(true);
     })();
     return () => { disposed = true; observer?.disconnect(); fg.current?._destructor(); fg.current = null; };
@@ -191,11 +210,14 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
         const { colour, shape } = styleOf(n.kind);
         const mesh = await makeMesh(shape, colour);
         if (cancelled) return;
-        const label = new SpriteText(n.name.length > 26 ? `${n.name.slice(0, 25)}…` : n.name, 4.2, INK);
+        const label = new SpriteText(n.name.length > 26 ? `${n.name.slice(0, 25)}…` : n.name, 5.2, INK);
         label.fontFace = face;
-        label.backgroundColor = "rgba(21,22,19,0.85)";
-        label.padding = 1.2;
-        label.borderRadius = 1;
+        label.backgroundColor = "rgba(6,8,20,0.78)";
+        label.borderColor = colour;
+        label.borderWidth = 0.35;
+        label.fontWeight = "bold";
+        label.borderRadius = 2;
+        label.padding = 1.6;
         label.position.set(0, 10, 0);
         const T = await import("three");
         const group = new T.Group();
@@ -219,6 +241,7 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
       const collide = g.d3Force("collide") as unknown as { radius: (r: number) => unknown } | undefined;
       collide?.radius(next.length <= LABEL_LIMIT ? 34 : 11);
       g.graphData({ nodes: next, links });
+      setBuilt((b) => b + 1);
       if (!grows) g.d3ReheatSimulation();
     })();
     return () => { cancelled = true; };
@@ -285,15 +308,16 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
       const lit = state.litNodes.has(id) || state.ends.has(id);
       const fade = state.faded ? state.faded(id) : false;
       material.opacity = fade ? 0.12 : 1;
-      material.emissive.set(lit ? ACCENT : "#000000");
-      material.emissiveIntensity = lit ? 0.55 : 0;
-      p.group.scale.setScalar(rootSet.has(id) ? 1.35 : lit ? 1.15 : 1);
+      // every node glows in its own colour; lit ones glow in the neon
+      material.emissive.set(lit ? ACCENT : material.color);
+      material.emissiveIntensity = lit ? 0.75 : 0.35;
+      p.group.scale.setScalar(rootSet.has(id) ? 1.9 : lit ? 1.6 : 1.4);
       const orphan = overview && n?.kind === "Service" && !owned.has(id);
       p.label.visible = !fade && (!lots || lit || rootSet.has(id) || n?.kind === "Team" || orphan ||
         (hoverNode !== null && (adjacency.get(hoverNode)?.nodes.has(id) ?? false)));
       p.label.color = orphan ? OLD : INK;
     });
-  }, [state, nodes, edges, roots, overview, hoverNode, adjacency]);
+  }, [state, nodes, edges, roots, overview, hoverNode, adjacency, built]);
 
   // link visuals
   useEffect(() => {
@@ -316,7 +340,7 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
   }, [state, ready, hiddenLabels, compare, overview, pinned]);
 
   // ------------------------------------------------------------------ controls
-  const fit = () => { const g = fg.current; if (!g) return; g.zoomToFit(500, 60); setTimeout(() => applyFog(g), 550); };
+  const fit = () => { const g = fg.current; if (!g) return; g.zoomToFit(500, 12); setTimeout(() => { closer(g, 0.8); applyFog(g); }, 560); };
   const target = () => (fg.current?.controls() as { target?: { x: number; y: number; z: number } } | undefined)?.target ?? { x: 0, y: 0, z: 0 };
   const zoomBy = (f: number) => {
     const g = fg.current;

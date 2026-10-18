@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleX, LoaderCircle } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleX, LoaderCircle } from "./icons";
 import { api, type Doc, type Guard, type ProgressEvent, type Step, type Track, type Verification } from "@/lib/api";
 import { docKindOfId, ID_PATTERN } from "@/lib/entities";
 import { stripEmoji } from "@/lib/text";
@@ -65,7 +65,7 @@ function Pending({ entry, onCancel }: { entry: Entry; onCancel: () => void }) {
           {t}{i === tools.length - 1 ? <LoaderCircle size={11} className="animate-spin" aria-label="running" /> : <Check size={11} aria-label="done" />}
         </span>
       ))}
-      {entry.mode === "agent" && <button onClick={onCancel} className="ml-auto text-ink-3 hover:text-ink">Cancel</button>}
+      {entry.mode === "agent" && <button onClick={onCancel} className="btn btn-sm ml-auto">Cancel</button>}
     </div>
   );
 }
@@ -230,7 +230,7 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
           {entry.verification && <Verdict v={entry.verification} />}
           {entry.steps.length > 0 && (
             <button onClick={() => setStepsOpen(!showSteps)} aria-expanded={showSteps}
-                    className="inline-flex items-center gap-0.5 font-medium text-ink-2 hover:text-ink">
+                    className="btn btn-sm">
               {showSteps ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               {entry.steps.length} tool{entry.steps.length > 1 ? "s" : ""}
             </button>
@@ -269,7 +269,7 @@ export default function EntryCard({ entry, tenant, active, focusStep, onSelect, 
       {!entry.pending && (entry.data !== undefined || entry.conversationId || entry.steps.some((s) => s.data)) && (
         <div className="mt-3">
           <button onClick={() => setShowDetails((v) => !v)} aria-expanded={showDetails}
-                  className="inline-flex items-center gap-0.5 text-xs text-ink-3 hover:text-ink">
+                  className="btn btn-sm">
             {showDetails ? <ChevronDown size={12} /> : <ChevronRight size={12} />}Details
           </button>
           {showDetails && (

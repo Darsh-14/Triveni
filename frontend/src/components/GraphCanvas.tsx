@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Core, ElementDefinition, LayoutOptions, NodeSingular } from "cytoscape";
-import { ArrowRight, Boxes, ChevronDown, ChevronUp, ChevronsDownUp, Eye, EyeOff, Maximize, Network, Orbit, Search, Share2, SunDim, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowRight, Boxes, ChevronDown, ChevronUp, ChevronsDownUp, Eye, EyeOff, Maximize, Network, Orbit, Search, Share2, SunDim, X, ZoomIn, ZoomOut } from "./icons";
 import type { GraphEdge, GraphNode } from "@/lib/api";
 import { styleOf } from "@/lib/entities";
 import { IconButton, ShapeSwatch } from "./ui";
@@ -392,7 +392,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
     <div className="relative isolate h-full w-full overflow-hidden">
       {/* Cytoscape forces position:relative on its container and stacks its canvases inside it:
           keep that in layer 0, overlays in 10, tooltip in 20 */}
-      <div ref={container} className="relative z-0 h-full w-full" data-testid="graph-canvas" />
+      <div ref={container} className="relative z-0 h-full w-full bg-[#03040a]" data-testid="graph-canvas" />
 
       {/* search (top-left) */}
       <form onSubmit={(e) => { e.preventDefault(); find(); }}

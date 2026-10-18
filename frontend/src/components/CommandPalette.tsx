@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Search } from "lucide-react";
+import { Search } from "./icons";
 
 /* Command palette (Linear / Vercel / Raycast): one searchable list of everything you can do or open.
    Combobox pattern: focus stays in the input, a virtual highlight moves through the options. */

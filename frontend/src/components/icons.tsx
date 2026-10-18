@@ -1,0 +1,35 @@
+"use client";
+
+// Phosphor icons (duotone weight, set once by IconContext in Triveni.tsx), exported under the names the
+// components already use, so the icon set is swapped in one place.
+export {
+  ArrowLeft, ArrowRight, Check, Code, Command, Copy, Eye, Play, Plus, Repeat, ShieldCheck, Square, SunDim, Wrench, X,
+  Robot as Bot,
+  Cube as Box,
+  Stack as Boxes,
+  CaretDown as ChevronDown,
+  CaretRight as ChevronRight,
+  CaretUp as ChevronUp,
+  ArrowsInLineVertical as ChevronsDownUp,
+  WarningCircle as CircleAlert,
+  CheckCircle as CircleCheck,
+  XCircle as CircleX,
+  ArrowsOutSimple as Expand,
+  EyeSlash as EyeOff,
+  SquaresFour as LayoutGrid,
+  CircleNotch as LoaderCircle,
+  CornersOut as Maximize,
+  ChatsCircle as MessagesSquare,
+  TreeStructure as Network,
+  Planet as Orbit,
+  SidebarSimple as PanelLeftClose,
+  SidebarSimple as PanelLeftOpen,
+  ArrowCounterClockwise as RotateCcw,
+  MagnifyingGlass as Search,
+  PaperPlaneRight as Send,
+  Graph as Share2,
+  Table as Table2,
+  MagnifyingGlassPlus as ZoomIn,
+  MagnifyingGlassMinus as ZoomOut,
+  IconContext,
+} from "@phosphor-icons/react";

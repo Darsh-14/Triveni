@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Command, LayoutGrid, Maximize, MessagesSquare, PanelLeftClose, PanelLeftOpen, Play, Plus, Repeat, Search, Send, ShieldCheck, Square, Table2, Wrench, X } from "lucide-react";
+import { Box, Command, IconContext, LayoutGrid, Maximize, MessagesSquare, PanelLeftClose, PanelLeftOpen, Play, Plus, Repeat, Search, Send, ShieldCheck, Square, Table2, Wrench, X } from "./icons";
 import {
   api, parseEdge, toolAsStep, type AgentResult, type ConversationInfo, type GraphEdge, type GraphNode, type Health,
   type Guard, type Person, type Step, type ToolInfo,
@@ -16,7 +16,7 @@ import RightPanel, { type PanelState, type PanelTab } from "./RightPanel";
 import ToolRunner from "./ToolRunner";
 import CommandPalette, { type PaletteItem } from "./CommandPalette";
 import Splitter from "./Splitter";
-import { Chip, ShapeSwatch } from "./ui";
+import { Chip, ShapeSwatch, TRACK_COLOUR } from "./ui";
 
 /** The rejected-draft record, if the proof check replaced the model's answer (empty object otherwise). */
 const guardOf = (r: AgentResult) => (r.guard && "reason" in r.guard ? (r.guard as Guard) : undefined);
@@ -27,6 +27,12 @@ const DEFAULT_PANES = { thread: 480, panel: 400, threadOpen: true };
 function loadPanes(): typeof DEFAULT_PANES {
   try { return { ...DEFAULT_PANES, ...JSON.parse(localStorage.getItem(PANES_KEY) ?? "{}") }; } catch { return DEFAULT_PANES; }
 }
+
+// a sidebar tile: tinted in its section colour, filled when open
+const tile = (colour: string, active: boolean) => ({
+  color: active ? "var(--on-ink)" : colour,
+  background: active ? colour : `color-mix(in srgb, ${colour} 16%, transparent)`,
+});
 
 let counter = 0;
 const newId = () => `e${++counter}`;
@@ -381,13 +387,14 @@ export default function Triveni() {
     <div className={compact ? "space-y-3" : "space-y-5 px-5 py-6"}>
       {TRACK_COLUMNS.map((col) => (
         <section key={col.track}>
-          <h3 className="mb-1 text-[13px] font-semibold text-ink">{col.title}</h3>
+          <h3 className="mb-1.5 text-[13px] font-semibold" style={{ color: TRACK_COLOUR[col.track] }}>{col.title}</h3>
           <ul>
             {SCENARIOS.filter((s) => s.tracks.includes(col.track)).map((s) => (
               <li key={`${col.track}-${s.n}`}>
                 <button disabled={busy} onClick={() => runScenario(s)}
-                        className="flex w-full items-baseline gap-3 rounded-[2px] px-1 py-1 text-left text-[14px] text-ink-2 hover:bg-raised hover:text-ink disabled:opacity-50">
-                  <span className="w-3 shrink-0 text-right font-mono text-xs text-ink-3">{s.n}</span>
+                        className="flex w-full items-center gap-3 rounded-lg px-1.5 py-1.5 text-left text-[14px] text-ink-2 hover:bg-raised hover:text-ink disabled:opacity-50">
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md font-mono text-[11px] font-medium"
+                        style={{ color: TRACK_COLOUR[col.track], background: `color-mix(in srgb, ${TRACK_COLOUR[col.track]} 16%, transparent)` }}>{s.n}</span>
                   <span>{s.label}</span>
                 </button>
               </li>
@@ -399,6 +406,7 @@ export default function Triveni() {
   );
 
   return (
+    <IconContext.Provider value={{ weight: "duotone" }}>
     <div className="flex h-screen flex-col bg-bg text-ink">
       {/* top bar */}
       <header className="flex h-12 shrink-0 items-center gap-3 bg-bg px-4">
@@ -436,25 +444,25 @@ export default function Triveni() {
         {/* icon sidebar */}
         <nav aria-label="Sidebar" className="mr-1 flex w-12 shrink-0 flex-col items-center gap-1 rounded-xl border border-line bg-panel py-2">
           {([
-            ["scenarios", "Scenarios", LayoutGrid],
-            ["conversations", "Conversations", MessagesSquare],
-            ["tools", "Tools", Wrench],
-          ] as const).map(([key, label, Icon]) => (
+            ["scenarios", "Scenarios", LayoutGrid, "var(--c-fuchsia)"],
+            ["conversations", "Conversations", MessagesSquare, "var(--c-teal)"],
+            ["tools", "Tools", Wrench, "var(--c-yellow)"],
+          ] as const).map(([key, label, Icon, colour]) => (
             <button key={key} title={label} aria-label={label} aria-pressed={flyout === key} onClick={() => setFlyout(flyout === key ? null : key)}
-                    className={`grid h-9 w-9 place-items-center rounded ${flyout === key ? "bg-accent-soft text-accent-ink" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
-              <Icon size={18} />
+                    style={tile(colour, flyout === key)} className="grid h-9 w-9 place-items-center rounded-lg hover:brightness-125">
+              <Icon size={19} />
             </button>
           ))}
           <button title="Approvals" aria-label="Approvals" onClick={openApprovals}
-                  className={`relative grid h-9 w-9 place-items-center rounded ${panel?.tab === "approvals" ? "bg-accent-soft text-accent-ink" : "text-ink-3 hover:bg-raised hover:text-ink"}`}>
-            <ShieldCheck size={18} />
+                  style={tile("var(--c-green)", panel?.tab === "approvals")} className="relative grid h-9 w-9 place-items-center rounded-lg hover:brightness-125">
+            <ShieldCheck size={19} />
             {pendingApprovals > 0 && (
               <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-[2px] bg-warn px-0.5 text-center font-mono text-[10px] leading-4 text-on-ink">{pendingApprovals}</span>
             )}
           </button>
           <button title={panes.threadOpen ? "Hide thread" : "Show thread"} aria-label={panes.threadOpen ? "Hide thread" : "Show thread"}
                   aria-pressed={!panes.threadOpen} onClick={() => resize({ threadOpen: !panes.threadOpen })}
-                  className="mt-auto grid h-9 w-9 place-items-center rounded text-ink-3 hover:bg-raised hover:text-ink">
+                  className="mt-auto grid h-9 w-9 place-items-center rounded-lg bg-raised text-ink-2 hover:bg-line-strong hover:text-ink">
             {panes.threadOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
           </button>
         </nav>
@@ -514,7 +522,7 @@ export default function Triveni() {
                      className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3 disabled:opacity-60" />
               {conversationId && <span className="font-mono text-[11px] text-ink-3">{conversationId}</span>}
               <button disabled={!agentOnline || busy || !question.trim()} aria-label="Send"
-                      className="grid h-7 w-7 place-items-center rounded bg-ink text-on-ink disabled:opacity-40"><Send size={14} /></button>
+                      className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-white hover:brightness-110 disabled:opacity-40"><Send size={14} /></button>
             </div>
           </form>
         </section>
@@ -527,25 +535,25 @@ export default function Triveni() {
         {/* graph */}
         <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-panel">
           <div className="flex h-10 shrink-0 items-center gap-3 border-b border-line px-3 text-xs">
-            <div role="tablist" className="flex rounded border border-line p-0.5">
+            <div role="tablist" className="flex gap-0.5 rounded-lg bg-raised p-0.5">
               {([["3d", "3D"], ["2d", "2D"], ["table", "Table"]] as const).map(([v, label]) => (
                 <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)}
-                        className={`rounded px-2.5 py-0.5 font-medium ${view === v ? "bg-raised text-ink" : "text-ink-3 hover:text-ink"}`}>{label}</button>
+                        className="tab">{label}</button>
               ))}
             </div>
             <span className="min-w-0 flex-1 truncate font-medium text-ink-2" title={graph.title}>{graph.title}</span>
             <span className="tabular-nums text-ink-3">{graph.nodes.length} nodes · {graph.edges.length} edges</span>
             {graph.edges.some((e) => e.superseded) && (
-              <div role="radiogroup" aria-label="Before or after the change" className="flex rounded border border-line p-0.5">
+              <div role="radiogroup" aria-label="Before or after the change" className="flex gap-0.5 rounded-lg bg-raised p-0.5">
                 {(["before", "after", "both"] as const).map((m) => (
                   <button key={m} role="radio" aria-checked={compare === m} onClick={() => setCompare(m)}
-                          className={`rounded px-2 py-0.5 font-medium capitalize ${compare === m ? "bg-warn-soft text-warn" : "text-ink-3 hover:text-ink"}`}>{m}</button>
+                          className="tab capitalize">{m}</button>
                 ))}
               </div>
             )}
             {focusStep !== null && <Chip tone="info">step {focusStep + 1}<button onClick={() => setFocusStep(null)} aria-label="Clear step"><X size={11} /></button></Chip>}
             {graph.entryId && (
-              <button onClick={() => showOverview(tenant)} className="rounded border border-line px-2 py-1 font-medium text-ink-2 hover:bg-raised">Overview</button>
+              <button onClick={() => showOverview(tenant)} className="btn btn-sm">Overview</button>
             )}
           </div>
           <div className="relative isolate min-h-0 flex-1">
@@ -575,5 +583,6 @@ export default function Triveni() {
         )}
       </main>
     </div>
+    </IconContext.Provider>
   );
 }

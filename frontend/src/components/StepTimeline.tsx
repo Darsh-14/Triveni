@@ -1,6 +1,6 @@
 "use client";
 
-import { Code } from "lucide-react";
+import { Code } from "./icons";
 import type { ProgressEvent, Step } from "@/lib/api";
 
 /* Agent steps as a timeline (Langfuse / LangSmith trace view): one bar per tool call, placed at the moment the

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, Bot, Check, LoaderCircle } from "lucide-react";
+import { ArrowRight, Bot, Check, LoaderCircle } from "./icons";
 import { api, type ActionInfo, type AgentResult, type HandoffInfo, type Person } from "@/lib/api";
 import { Chip, EntityChip, toneOf } from "./ui";
 
@@ -106,9 +106,9 @@ export default function Approvals({ tenant, refreshKey, onOpen, onResult, onChan
               {a.status === "proposed" && (
                 <div className="mt-2 flex gap-1.5">
                   <button disabled={busy || !approver} onClick={() => decide(a.id, true)}
-                          className="rounded bg-ink px-3 py-1 font-medium text-on-ink hover:bg-ink-2 disabled:opacity-50">Approve</button>
+                          className="btn btn-primary">Approve</button>
                   <button disabled={busy || !approver} onClick={() => decide(a.id, false)}
-                          className="rounded border border-line-strong px-3 py-1 font-medium text-ink-2 hover:bg-raised disabled:opacity-50">Reject</button>
+                          className="btn">Reject</button>
                 </div>
               )}
             </div>
@@ -120,7 +120,7 @@ export default function Approvals({ tenant, refreshKey, onOpen, onResult, onChan
         <div className="mb-2 flex items-center gap-2">
           <h3 className="text-[13px] font-semibold text-ink">Handoffs <span className="font-mono font-normal text-ink-3">{handoffs.length}</span></h3>
           <button disabled={busy} onClick={runRemediation}
-                  className="ml-auto inline-flex items-center gap-1 rounded border border-line-strong px-2 py-1 font-medium text-ink-2 hover:bg-raised disabled:opacity-50">
+                  className="btn ml-auto">
             {busy ? <LoaderCircle size={14} className="animate-spin" aria-hidden /> : <Bot size={14} aria-hidden />}{busy ? "Running" : "Run remediation"}
           </button>
         </div>

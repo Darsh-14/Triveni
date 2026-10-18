@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, X } from "lucide-react";
+import { Check, X } from "./icons";
 import type { ReactNode } from "react";
 import type { Step, Track } from "@/lib/api";
 import { Chip, EntityChip, toneOf } from "./ui";
