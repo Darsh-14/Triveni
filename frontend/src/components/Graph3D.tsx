@@ -400,10 +400,13 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
       p.group.scale.setScalar(rootSet.has(id) ? 1.9 : lit ? 1.6 : 1.4);
       const orphan = overview && n?.kind === "Service" && !owned.has(id);
       const memory = MEMORY.has(n?.kind ?? ""); // ids, not names: labelled only when hovered or selected
-      p.label.visible = !fade && (!lots || lit || rootSet.has(id) || n?.kind === "Team" || orphan ||
+      p.label.visible = (!lots || lit || rootSet.has(id) || n?.kind === "Team" || orphan ||
         (hoverNode !== null && (adjacency.get(hoverNode)?.nodes.has(id) ?? false)) ||
         (!memory && selected !== null && (adjacency.get(selected)?.nodes.has(id) ?? false))) && (!memory || lit || hoverNode === id); // the clicked node's neighbours
       p.label.color = orphan ? OLD : INK;
+      // names stay readable when dimmed: the label fades with its node instead of disappearing
+      p.label.material.transparent = true;
+      p.label.material.opacity = fade ? 0.5 : 1;
     });
   }, [state, nodes, edges, roots, overview, hoverNode, adjacency, built, selected]);
 
