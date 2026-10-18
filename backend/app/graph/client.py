@@ -1,4 +1,5 @@
 """One shared FalkorDB connection for the process. Graph selection lives in tenant.py."""
+import os
 from functools import lru_cache
 
 from falkordb import FalkorDB
@@ -15,6 +16,9 @@ def get_db() -> FalkorDB:
         username=s.falkordb_username,
         password=s.falkordb_password,
         ssl=s.falkordb_ssl,
+        # fail fast: an unreachable database must surface as an error in seconds, not hang every request
+        socket_connect_timeout=float(os.getenv("TRIVENI_FALKORDB_CONNECT_TIMEOUT", "5")),
+        socket_timeout=float(os.getenv("TRIVENI_FALKORDB_TIMEOUT", "20")),
     )
 
 

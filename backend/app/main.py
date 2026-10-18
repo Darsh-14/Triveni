@@ -7,6 +7,8 @@ import time
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -28,6 +30,17 @@ app.add_middleware(
     allow_origins=os.getenv("TRIVENI_CORS_ORIGINS", "http://localhost:3001,http://127.0.0.1:3001").split(","),
     allow_methods=["*"], allow_headers=["*"],
 )
+
+
+@app.exception_handler(ConnectionError)
+@app.exception_handler(TimeoutError)
+@app.exception_handler(RedisConnectionError)
+@app.exception_handler(RedisTimeoutError)
+async def database_unreachable(_request, exc):
+    """FalkorDB down or unreachable: say so in seconds (503) instead of hanging or returning a bare 500."""
+    return JSONResponse(status_code=503, content={
+        "detail": f"FalkorDB is unreachable ({type(exc).__name__}). Check the instance in the FalkorDB Cloud console "
+                  "and that this network can reach its host and port."})
 
 
 def tenant_graph(tenant: str):
