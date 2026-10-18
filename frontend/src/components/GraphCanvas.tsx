@@ -66,10 +66,11 @@ const STYLE = [
 
 function layoutOptions(name: LayoutName, cy: Core, roots: string[], count: number, grouped = false): LayoutOptions {
   if (grouped && name === "force") return { name: "preset", padding: 40, animate: false } as LayoutOptions;
-  const rootEls = roots.reduce((c, id) => c.union(cy.getElementById(id)), cy.collection());
   if (name === "tree") {
-    return { name: "breadthfirst", directed: false, roots: rootEls.nonempty() ? rootEls : undefined, padding: 30,
-             spacingFactor: 1.15, animate: false } as LayoutOptions;
+    // layered (Sugiyama) layout via dagre: one row per level, nodes reordered within rows to minimise crossings,
+    // cycles broken automatically. BT puts the queried node (the edge target) on top, its dependents below.
+    return { name: "dagre", rankDir: "BT", nodeSep: 40, rankSep: 70, edgeSep: 12, padding: 30, animate: false,
+             ranker: "network-simplex" } as LayoutOptions;
   }
   if (name === "radial") {
     const rootIds = new Set(roots);
@@ -160,7 +161,8 @@ function buildElements(nodes: GraphNode[], edges: GraphEdge[], roots: string[], 
 
 /** Busy graphs: edge labels only on the selected node's edges (they would otherwise pile up on each other). */
 function quietLabels(c: Core) {
-  c.edges().toggleClass("quiet", c.edges().length > 20);
+  // busy graphs, and layered trees (whose lines converge on the root), show edge labels only on hover or selection
+  c.edges().toggleClass("quiet", c.edges().length > 20 || c.scratch("layered") === true);
 }
 
 /** Fit the graph, but never blow a small evidence graph up past 125%. */
@@ -195,8 +197,9 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
     (async () => {
       const cytoscape = (await import("cytoscape")).default; // browser-only
       const fcose = (await import("cytoscape-fcose")).default;
+      const dagre = (await import("cytoscape-dagre")).default;
       if (disposed || !container.current) return;
-      try { cytoscape.use(fcose); } catch { /* already registered (fast refresh) */ }
+      try { cytoscape.use(fcose); cytoscape.use(dagre); } catch { /* already registered (fast refresh) */ }
       cy.current = cytoscape({ container: container.current, style: STYLE as never, minZoom: 0.15, maxZoom: 2.5 });
       // node labels in the app's text face (next/font gives it a generated family name, read from the CSS variable)
       const face = getComputedStyle(document.documentElement).getPropertyValue("--font-heros").trim();
@@ -294,6 +297,7 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
       return;
     }
     c.batch(() => { c.elements().remove(); c.add(els); });
+    c.scratch("layered", layout === "tree");
     c.layout(layoutOptions(layout, c, roots, nodes.length, groupedNow)).run();
     quietLabels(c);
     fitCapped(c);
@@ -303,7 +307,9 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
     relayout.current = () => {
       const c = cy.current;
       if (!c || !c.nodes().length) return;
+      c.scratch("layered", layout === "tree");
       c.layout(layoutOptions(layout, c, roots, c.nodes().length, groupedNow)).run();
+      quietLabels(c);
       fitCapped(c);
     };
   });
@@ -312,7 +318,9 @@ export default function GraphCanvas({ nodes, edges, focus, hover, roots, layout,
   useEffect(() => {
     const c = cy.current;
     if (!c || !ready || !c.nodes().length) return;
+    c.scratch("layered", layout === "tree");
     c.layout(layoutOptions(layout, c, roots, c.nodes().length, groupedNow)).run();
+    quietLabels(c);
     fitCapped(c);
   }, [layout]); // eslint-disable-line react-hooks/exhaustive-deps
 

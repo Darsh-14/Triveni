@@ -78,13 +78,14 @@ function closer(g: ForceGraph3DInstance<N, L>, f: number) {
   g.cameraPosition({ x: t.x + (c.x - t.x) * f, y: t.y + (c.y - t.y) * f, z: t.z + (c.z - t.z) * f }, t, 300);
 }
 
-export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onLayout, selected, onSelect, onExpand, compare = "both", onUnavailable }: Props) {
+export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover, roots, layout, onLayout, selected, onSelect, onExpand, compare = "both", onUnavailable }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const fg = useRef<ForceGraph3DInstance<N, L> | null>(null);
   const parts = useRef(new Map<string, Parts>());
   const cache = useRef(new Map<string, N>()); // node objects keep their positions across updates
   const fitNext = useRef(true);
-  const lastClick = useRef<{ id: string; t: number } | null>(null);
+  const refitOnce = useRef(false);
+  const lastClick = useRef<{ id: string; t: number; timer?: ReturnType<typeof setTimeout> } | null>(null);
   const handlers = useRef({ onSelect, onExpand });
   useEffect(() => { handlers.current = { onSelect, onExpand }; }, [onSelect, onExpand]);
 
@@ -93,13 +94,51 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
   const [hoverNode, setHoverNode] = useState<string | null>(null);
   const [hoverLink, setHoverLink] = useState<string | null>(null);
   const [pinned, setPinned] = useState<{ id: string; type: string; from: string; to: string } | null>(null);
-  const [dim, setDim] = useState(false);
+  const [dim, setDim] = useState(true); // click a node: it and its neighbours stay, the rest fades
   const [legendOpen, setLegendOpen] = useState(true);
   const [hiddenLabels, setHiddenLabels] = useState<Set<string>>(new Set());
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
 
-  const overview = useMemo(() => !roots.length && edges.every((e) => e.type === "DEPENDS_ON" || e.type === "OWNS"), [roots, edges]);
+  const overview = useMemo(() => !roots.length && rawEdges.every((e) => e.type === "DEPENDS_ON" || e.type === "OWNS"), [roots, rawEdges]);
+
+  // overview starts at team level: a closed team is one node with its service count, and the dependencies of its
+  // services become one line per team pair (thicker the more there are). Double-click a team to open it.
+  const [openTeams, setOpenTeams] = useState<Set<string>>(new Set());
+  useEffect(() => { setOpenTeams(new Set()); }, [rawNodes]); // eslint-disable-line react-hooks/set-state-in-effect
+  const { nodes, edges, lineCount } = useMemo(() => {
+    const lineCount = new Map<string, number>();
+    if (!overview) return { nodes: rawNodes, edges: rawEdges, lineCount };
+    const teamOf = new Map<string, string>();
+    rawEdges.filter((e) => e.type === "OWNS").forEach((e) => teamOf.set(e.target, e.source));
+    const size = new Map<string, number>();
+    teamOf.forEach((t) => size.set(t, (size.get(t) ?? 0) + 1));
+    const closed = (svc: string) => { const t = teamOf.get(svc); return t !== undefined && !openTeams.has(t); };
+    const rep = (id: string) => (closed(id) ? teamOf.get(id)! : id);
+    const nodes = rawNodes.filter((n) => !closed(n.id))
+      .map((n) => (n.label === "Team" ? { ...n, name: `${n.name} · ${size.get(n.id) ?? 0}` } : n));
+    const merged = new Map<string, GraphEdge>();
+    for (const e of rawEdges) {
+      if (e.type === "OWNS") { if (openTeams.has(e.source)) merged.set(edgeKey(e), e); continue; }
+      const source = rep(e.source), target = rep(e.target);
+      if (source === target) continue;
+      const m = { ...e, source, target };
+      const k = edgeKey(m);
+      lineCount.set(k, (lineCount.get(k) ?? 0) + 1);
+      merged.set(k, m);
+    }
+    return { nodes, edges: [...merged.values()], lineCount };
+  }, [overview, rawNodes, rawEdges, openTeams]);
+
+  const toggleTeam = useRef<(id: string) => boolean>(() => false);
+  useEffect(() => {
+    toggleTeam.current = (id) => {
+      if (!overview || !rawNodes.some((n) => n.id === id && n.label === "Team")) return false;
+      refitOnce.current = true; // opening or closing a team re-frames the view
+      setOpenTeams((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+      return true;
+    };
+  });
 
   // ------------------------------------------------------------------ one instance for the page lifetime
   useEffect(() => {
@@ -116,7 +155,7 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
       try {
         g = new ForceGraph3D(host.current, { controlType: "orbit" }) as unknown as ForceGraph3DInstance<N, L>;
       } catch { onUnavailable?.(); return; }
-      g.backgroundColor(PAGE).showNavInfo(false).enableNodeDrag(true).linkOpacity(0.85)
+      g.backgroundColor(PAGE).showNavInfo(false).enableNodeDrag(false).linkOpacity(0.85)
         .nodeLabel(() => "") // our own labels; no browser tooltip on top of them
         .linkLabel((l: L) => l.type)
         .linkDirectionalArrowLength(5).linkDirectionalArrowRelPos(1)
@@ -126,10 +165,17 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
         .onNodeHover((n: N | null) => { setHoverNode(n?.id ?? null); if (host.current) host.current.style.cursor = n ? "pointer" : ""; })
         .onLinkHover((l: L | null) => { setHoverLink(l?.id ?? null); if (host.current) host.current.style.cursor = l ? "pointer" : ""; })
         .onNodeClick((n: N) => {
-          const now = Date.now();
-          if (lastClick.current?.id === n.id && now - lastClick.current.t < 350) { handlers.current.onExpand?.(n.id); lastClick.current = null; return; }
-          lastClick.current = { id: n.id, t: now };
-          handlers.current.onSelect(n.id);
+          // a single click waits briefly: selecting opens the side panel, which resizes the canvas and would move the
+          // node out from under the second click of a double-click
+          if (lastClick.current?.id === n.id && lastClick.current.timer) {
+            clearTimeout(lastClick.current.timer);
+            lastClick.current = null;
+            if (!toggleTeam.current(n.id)) handlers.current.onExpand?.(n.id);
+            return;
+          }
+          if (lastClick.current?.timer) clearTimeout(lastClick.current.timer);
+          const timer = setTimeout(() => { lastClick.current = null; handlers.current.onSelect(n.id); }, 260);
+          lastClick.current = { id: n.id, t: Date.now(), timer };
         })
         .onLinkClick((l: L) => {
           const from = typeof l.source === "string" ? l.source : l.source.name;
@@ -161,6 +207,7 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
       g.d3Force("cluster", cluster as never);
       g.d3Force("charge")?.strength?.(-70);
       fg.current = g;
+      (host.current as HTMLDivElement & { __graph?: unknown }).__graph = g; // for browser tests: screen positions of nodes
       const resize = () => { if (host.current) g.width(host.current.clientWidth).height(host.current.clientHeight); };
       observer = new ResizeObserver(resize);
       observer.observe(host.current);
@@ -182,7 +229,8 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
       edges.filter((e) => e.type === "OWNS").forEach((e) => team.set(e.target, e.source));
       const ids = new Set(nodes.map((n) => n.id));
       const before = new Set(cache.current.keys());
-      const grows = before.size > 0 && [...before].every((id) => ids.has(id));
+      const same = before.size === ids.size && [...before].every((id) => ids.has(id)); // a re-run with the same nodes
+      const grows = !same && before.size > 0 && [...before].every((id) => ids.has(id));
       const next: N[] = nodes.map((n) => {
         const old = cache.current.get(n.id);
         if (old) { old.team = team.get(n.id); return old; }
@@ -215,7 +263,8 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
       }
       const links: L[] = edges.filter((e) => ids.has(e.source) && ids.has(e.target))
         .map((e) => ({ id: edgeKey(e), source: e.source, target: e.target, type: e.type, old: Boolean(e.superseded || e.stale), superseded: Boolean(e.superseded) }));
-      fitNext.current = !grows;
+      if (!same) fitNext.current = !grows || refitOnce.current;
+      refitOnce.current = false;
       g.nodeThreeObject((n: N) => parts.current.get(n.id)?.group as Object3D);
       // layout: tree and radial are 3D DAG layouts rooted at the queried node; force otherwise
       g.dagMode(layout === "tree" ? "td" : layout === "radial" ? "radialout" : (null as never)).dagLevelDistance(layout === "force" ? (null as never) : 60);
@@ -322,11 +371,12 @@ export default function Graph3D({ nodes, edges, focus, hover, roots, layout, onL
         if (l.type === "OWNS" && overview) return OWNS_LINK;
         return anyLit ? LINK_FAINT : LINK;
       })
-      .linkWidth((l: L) => (state.litLinks.has(l.id) ? (pinned?.id === l.id ? 2.6 : 2) : state.faded?.(l.id) ? 0.4 : 1))
+      .linkWidth((l: L) => (state.litLinks.has(l.id) ? (pinned?.id === l.id ? 2.6 : 2) : state.faded?.(l.id) ? 0.4
+        : Math.min(1 + ((lineCount.get(l.id) ?? 1) - 1) * 0.45, 4.5)))
       .linkDirectionalParticles((l: L) => (state.litLinks.has(l.id) ? 3 : 0))
       .linkDirectionalParticleColor(() => ACCENT)
       .linkDirectionalArrowColor((l: L) => (state.litLinks.has(l.id) ? ACCENT : l.old && compare !== "before" ? OLD : LINK));
-  }, [state, ready, hiddenLabels, compare, overview, pinned]);
+  }, [state, ready, hiddenLabels, compare, overview, pinned, lineCount]);
 
   // ------------------------------------------------------------------ controls
   const fit = () => { const g = fg.current; if (!g) return; g.zoomToFit(500, 12); setTimeout(() => { closer(g, 0.8); applyFog(g); }, 560); };

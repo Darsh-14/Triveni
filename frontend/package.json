@@ -12,6 +12,7 @@
     "@phosphor-icons/react": "2.1.10",
     "3d-force-graph": "1.80.1",
     "cytoscape": "3.34.4",
+    "cytoscape-dagre": "2.5.0",
     "cytoscape-fcose": "2.2.0",
     "d3-force-3d": "3.0.6",
     "next": "16.4.2",
