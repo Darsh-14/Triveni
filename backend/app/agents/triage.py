@@ -21,6 +21,8 @@ How to work:
   nothing; suggestions are listed). On unknown_entity, say the name is not in the graph and offer the suggestions;
   never treat it as "nothing is affected", and never retry with a guessed name.
 - For one incident, person, team or decision (what caused it, what they work on, what it governs), use describe.
+- For questions about what changed recently or who approved something, use recent (deployments, incidents,
+  decisions, actions). Deployments have authors, not approvers; approvals exist only on actions.
 - Questions usually need several tools (for an outage: blast radius, the owner/on-call to page, recent deploys or
   similar incidents, governing decisions). Call independent tools in parallel.
 - Before proposing a change to a service, check decision_trail with the action so a current decision is respected.

@@ -91,7 +91,7 @@ class OpenAICompatProvider:
             from openai import AsyncOpenAI
             # no SDK retries when we may not wait: a 429 should fall through to the next provider at once
             client = AsyncOpenAI(api_key=os.getenv(key_env), base_url=base_url, max_retries=1 if max_wait else 0,
-                                 timeout=60 if max_wait else 25)
+                                 timeout=60 if max_wait else 20)
         self.client = client
 
     @staticmethod
@@ -112,7 +112,7 @@ class OpenAICompatProvider:
                 tools=self.tool_defs(tools), tool_choice="auto",
             ), self.max_wait)
         except (openai.APIStatusError, openai.APIConnectionError) as exc:  # 413/429/5xx/auth/timeouts: try the next provider
-            raise ProviderUnavailable(f"{self.name}: {type(exc).__name__}: {exc}") from exc
+            raise ProviderUnavailable(f"{self.name}: {type(exc).__name__} ({self.model}): {exc}") from exc
         msg = resp.choices[0].message
         calls = []
         for tc in msg.tool_calls or []:
@@ -144,7 +144,7 @@ class OpenAICompatProvider:
                 model=self.model, temperature=0.2,
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}]), self.max_wait)
         except (openai.APIStatusError, openai.APIConnectionError) as exc:
-            raise ProviderUnavailable(f"{self.name}: {type(exc).__name__}: {exc}") from exc
+            raise ProviderUnavailable(f"{self.name}: {type(exc).__name__} ({self.model}): {exc}") from exc
         self.last_tokens = getattr(getattr(resp, "usage", None), "total_tokens", 0) or 0
         return (resp.choices[0].message.content or "").strip(), f"{self.name}:{resp.model}"
 
@@ -158,7 +158,7 @@ class OpenAICompatProvider:
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             ), self.max_wait)
         except (openai.APIStatusError, openai.APIConnectionError) as exc:  # 413/429/5xx/auth/timeouts: try the next provider
-            raise ProviderUnavailable(f"{self.name}: {type(exc).__name__}: {exc}") from exc
+            raise ProviderUnavailable(f"{self.name}: {type(exc).__name__} ({self.model}): {exc}") from exc
         return resp.choices[0].message.content or "", f"{self.name}:{resp.model}"
 
 
@@ -287,6 +287,24 @@ class RulesProvider:
                                      "other": b["id"].removeprefix("svc:")})]
             return [("shortest_path", {"from": a["id"], "to": b["id"], "mode": "any"})]
 
+        # 3b. recency and approvals ("who approved the most recent change?", "latest deploy on payments-api",
+        #     "recent SEV1s", "what is waiting for approval?"); "last time X failed" is about memory, not recency
+        scope = {"service": svc} if svc else {}
+        recency = re.search(r"\b(recent|recently|latest|newest|lately|today|this week|what changed|what's changed)\b"
+                            r"|\blast\b(?!\s+time)", q)
+        if re.search(r"\bapprov|awaiting|waiting for|pending", q):
+            return [("recent", {"kind": "actions", **scope})] + (
+                [("recent", {"kind": "deployments", **scope})] if re.search(r"\bchange", q) else [])
+        if re.search(r"\bhandoffs?\b|hand-offs?", q) and not incident:
+            return [("list_handoffs", {"status": "open" if "open" in q else "done" if re.search(r"\bdone|finished|completed", q) else "claimed" if "claimed" in q else "open"})]
+        if recency:
+            kinds = [k for k, pat in (("deployments", r"deploy|release|ship|roll|change|version"),
+                                      ("incidents", r"incident|outage|sev\s?\d|page[sd]?\b|broke"),
+                                      ("decisions", r"decision|adr|policy"),
+                                      ("actions", r"action|ticket|notif|proposal|change")) if re.search(pat, q)]
+            if kinds or not ents:
+                return [("recent", {"kind": k, **scope}) for k in (kinds or ["deployments", "incidents"])]
+
         # 4. whole-graph algorithms
         if re.search(r"single points? of (knowledge|failure)|key people|bus factor|knowledge silo", q):
             return [("key_people", {})]
@@ -403,3 +421,48 @@ def make(name: str, max_wait: float = 30.0):
     if name == "rules":
         return RulesProvider()
     raise ValueError(f"unknown provider {name!r}")
+
+
+# --------------------------------------------------------------------------- chain + cooldown (live requests)
+# Free tiers limit each model separately, so one provider name can offer several models. Live requests try them in
+# order and skip any model that failed moments ago, instead of paying its timeout again on every question.
+EXTRA_MODELS = {"groq": ("openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b")}
+COOLDOWN_S = {"quota": 900, "not_found": 3600, "timeout": 120, "rate": 60, "other": 60}
+_cooling: dict[str, float] = {}  # "groq/openai/gpt-oss-120b" -> monotonic time it may be tried again
+
+
+def models_for(name: str) -> list[str]:
+    """TRIVENI_<NAME>_MODELS (comma list) if set, else the configured model followed by the extra free-tier models."""
+    _, _, model_env, default = OPENAI_COMPAT[name]
+    listed = os.getenv(f"TRIVENI_{name.upper()}_MODELS")
+    if listed:
+        return [m.strip() for m in listed.split(",") if m.strip()]
+    first = os.getenv(model_env, default)
+    return [first] + [m for m in EXTRA_MODELS.get(name, ()) if m != first]
+
+
+def _key(provider) -> str:
+    return f"{provider.name}/{getattr(provider, 'model', '')}"
+
+
+def cool_down(provider, error: str) -> None:
+    """Remember that this model just failed, for long enough that the next questions skip it."""
+    import time
+
+    e = error.lower()
+    kind = ("quota" if "per day" in e or "quota" in e or "tokens per d" in e else "not_found" if "404" in e
+            else "timeout" if "timed out" in e or "timeout" in e else "rate" if "429" in e or "rate" in e else "other")
+    _cooling[_key(provider)] = time.monotonic() + COOLDOWN_S[kind]
+
+
+def make_chain(max_wait: float = 30.0) -> list:
+    """Every available provider and model, in order, minus the ones cooling down. Rules is always last."""
+    import time
+
+    now, chain = time.monotonic(), []
+    for name in provider_order():
+        if name in OPENAI_COMPAT:
+            chain += [OpenAICompatProvider(name, model=m, max_wait=max_wait) for m in models_for(name)]
+        else:
+            chain.append(make(name, max_wait))
+    return [p for p in chain if p.name == "rules" or _cooling.get(_key(p), 0) <= now]

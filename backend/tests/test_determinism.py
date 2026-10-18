@@ -138,3 +138,39 @@ def test_rules_mode_answers_a_typo_with_suggestions(loaded):
     r = anyio.run(lambda: run_agent("Is paymnts-api down?", T, SYSTEM, persist=False, providers=[RulesProvider()]))
     assert [(s.tool, s.outcome) for s in r.steps] == [("describe", "unknown_entity")]
     assert "did you mean payments-api" in r.answer and r.verification["verdict"] == "verified" and not r.guard
+
+
+def test_recent_answers_questions_that_name_no_entity(loaded):
+    r = run_tool(T, "recent", {"kind": "deployments", "service": "Payments API", "limit": 3})
+    assert [i["version"] for i in r.data["items"]] == ["2.14.0", "2.13.0", "2.12.0"]
+    assert r.data["items"][2]["caused"] == ["inc:0042"] and "approvals are recorded only on actions" in r.explanation
+    assert run_tool(T, "recent", {"kind": "incidents", "limit": 1}).data["items"][0]["id"] == "inc:0057"
+    assert run_tool(T, "recent", {"kind": "deployments", "service": "paymnts"}).outcome == "unknown_entity"
+
+
+@pytest.mark.parametrize("question,plan", [
+    ("Who approved the most recent change?", [("recent", {"kind": "actions"}), ("recent", {"kind": "deployments"})]),
+    ("What was the last deploy on payments api?", [("recent", {"kind": "deployments", "service": "payments-api"})]),
+    ("Latest incident on orders-api?", [("recent", {"kind": "incidents", "service": "orders-api"})]),
+    ("What is waiting for approval?", [("recent", {"kind": "actions"})]),
+    ("Show open handoffs", [("list_handoffs", {"status": "open"})]),
+])
+def test_rules_planner_handles_recency_and_approvals(loaded, question, plan):
+    assert RulesProvider.plan(question, spot(get_graph(T), question)) == plan
+
+
+def test_rules_planner_keeps_last_time_as_memory(loaded):
+    q = "What did we learn last time payments-api failed?"
+    assert [n for n, _ in RulesProvider.plan(q, spot(get_graph(T), q))] == ["blast_radius", "similar_incidents", "recall"]
+
+
+def test_failed_models_cool_down_and_are_skipped(monkeypatch):
+    from backend.app.llm import providers as pv
+
+    monkeypatch.setenv("GROQ_API_KEY", "x")
+    monkeypatch.setenv("TRIVENI_LLM_PROVIDERS", "groq,rules")
+    monkeypatch.setenv("TRIVENI_GROQ_MODELS", "m1,m2")
+    monkeypatch.setattr(pv, "_cooling", {})
+    assert [p.model for p in pv.make_chain(0)] == ["m1", "m2", "rules"]  # every free-tier model gets a turn
+    pv.cool_down(pv.make_chain(0)[0], "groq: RateLimitError (m1): Error code: 429 - tokens per day")
+    assert [p.model for p in pv.make_chain(0)] == ["m2", "rules"]  # m1 skipped instead of failing again

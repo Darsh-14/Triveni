@@ -469,6 +469,32 @@ ORDER BY type(r), m.id
 MATCH (p:Person {id: $id})-[k:KNOWS]->(s:Service) RETURN s.id, s.name, k.weight ORDER BY k.weight DESC, s.id LIMIT 5
 ```
 
+### recent: newest deployments, incidents, decisions and actions **[01] [03]**
+`backend/app/tools/recent.py`. For questions that name no entity ("who approved the most recent change?", "last deploy on payments-api", "what awaits approval?"). Each kind is one fixed query ordered by its own timestamp. The optional service filter is a fixed `{name: $service}` pattern chosen by code, and the name stays a parameter. Deployments carry an author, not an approver; approvals exist only on Actions (APPROVED edge), and the explanation says so rather than inventing an approver.
+```cypher
+MATCH (p:Person)-[a:AUTHORED]->(d:Deployment)-[:DEPLOYED_TO]->(s:Service {name: $service})
+OPTIONAL MATCH (i:Incident)-[:CAUSED_BY]->(d)
+RETURN d.id, d.version, d.ts, d.status, s.id, s.name, p.id, p.name, collect(DISTINCT i.id), a.source_doc
+ORDER BY d.ts DESC LIMIT $limit
+
+MATCH (i:Incident)-[f:AFFECTED]->(s:Service {name: $service})
+OPTIONAL MATCH (p:Person)-[:RESOLVED]->(i)
+OPTIONAL MATCH (i)-[:CAUSED_BY]->(d:Deployment)
+RETURN i.id, i.title, i.severity, i.ts_open, i.ts_close, s.id, s.name, collect(DISTINCT p.name), collect(DISTINCT d.id), f.source_doc
+ORDER BY i.ts_open DESC LIMIT $limit
+
+MATCH (m:Person)-[:MADE]->(d:Decision)-[g:GOVERNS]->(s:Service {name: $service})
+OPTIONAL MATCH (n:Decision)-[:SUPERSEDES]->(d)
+RETURN d.id, d.title, d.ts, d.status, collect(DISTINCT s.name), m.id, m.name, collect(DISTINCT n.id), g.source_doc
+ORDER BY d.ts DESC LIMIT $limit
+
+MATCH (a:Action)-[:TARGETS]->(s:Service {name: $service})
+OPTIONAL MATCH (p:Person)-[:APPROVED]->(a)
+OPTIONAL MATCH (a)-[:BLOCKED_BY]->(d:Decision)
+RETURN a.id, a.kind, a.status, a.ts, a.decided_ts, a.proposed_by, s.id, s.name, p.id, p.name, collect(DISTINCT d.id)
+ORDER BY coalesce(a.decided_ts, a.ts) DESC LIMIT $limit
+```
+
 ## UI support (read-only)
 
 ### Node detail for the right panel **[F] [03]**

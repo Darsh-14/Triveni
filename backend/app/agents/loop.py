@@ -21,7 +21,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from backend.app.graph.tenant import get_graph
-from backend.app.llm.providers import ProviderUnavailable, RulesProvider, make, provider_order
+from backend.app.llm.providers import ProviderUnavailable, RulesProvider, cool_down, make_chain
 from backend.app.memory.conversation import append_message, load_history, start_conversation
 from backend.app.memory.remember import remember
 from backend.app.agents.verify import evidence_ids, guard, verify
@@ -188,7 +188,7 @@ async def run_agent(question: str, tenant: str, system: str, history: list | Non
     """max_wait: longest rate-limit wait per model call before falling back (the UI uses 0).
     progress: called with short status lines (provider tried, tool called, fallbacks) for a live status display."""
     progress = progress or (lambda _msg: None)
-    providers = providers if providers is not None else [make(n, max_wait=max_wait) for n in provider_order()]
+    providers = providers if providers is not None else make_chain(max_wait)  # every model, minus ones cooling down
     for p in providers:  # the rules planner spots entities by name in this tenant's graph
         if isinstance(p, RulesProvider) and p.tenant is None:
             p.tenant = tenant
@@ -206,6 +206,7 @@ async def run_agent(question: str, tenant: str, system: str, history: list | Non
                     result = await _run_with(provider, session, tools, question, tenant, system, history, max_turns, progress)
                 except ProviderUnavailable as exc:
                     failed.append(str(exc)[:300])
+                    cool_down(provider, str(exc))  # the next questions skip it for a while
                     progress(f"{provider.name} unavailable ({_reason(exc)}), falling back")
                     continue
                 break
