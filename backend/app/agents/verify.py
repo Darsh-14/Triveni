@@ -25,6 +25,14 @@ SLUG_RE = re.compile(r"(?<![\w:/.-])[a-z][a-z0-9]*(?:-[a-z0-9]+)+(?![\w-])")
 PAIR_RE = re.compile(r"\b([A-Z][a-z]+) ([A-Z][a-z]+)\b")
 
 
+# Unicode hyphens and dashes that models put inside ids and names (gpt-oss writes "payments‑api"): all become "-"
+DASHES = str.maketrans({c: "-" for c in "‐‑‒–—−﹣－"})
+
+
+def normalize_dashes(text: str) -> str:
+    return (text or "").translate(DASHES).replace("­", "")  # soft hyphens are dropped
+
+
 def _clean(m: str) -> str:
     return m.rstrip(".,;:)")
 
@@ -110,6 +118,7 @@ def verify(graph: Graph, answer: str, evidence: set[str], context: str = "", evi
     """Check every reference in `answer`. `evidence`: ids returned by tools this run (plus ids the user typed);
     `context`: the question and earlier turns, whose plainly named entities also count as given by the user;
     `evidence_text`: the tool results as text, whose plainly named entities count as returned by a tool."""
+    answer = normalize_dashes(answer)
     lex = Lexicon.load(graph)
     evidence = set(evidence) | {nid for nid, _ in lex.mentions(context + " " + evidence_text, bare_teams=True)}
     refs: dict[str, str] = {i: i for i in cited_ids(answer)}  # id -> how it was written

@@ -24,7 +24,7 @@ from backend.app.graph.tenant import get_graph
 from backend.app.llm.providers import ProviderUnavailable, RulesProvider, cool_down, make_chain
 from backend.app.memory.conversation import append_message, load_history, start_conversation
 from backend.app.memory.remember import remember
-from backend.app.agents.verify import evidence_ids, guard, verify
+from backend.app.agents.verify import evidence_ids, guard, normalize_dashes, verify
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -146,7 +146,7 @@ async def _run_with(provider, session, tools, question, tenant, system, history,
         result.tokens += getattr(turn, "tokens", 0) or 0
         messages.append(turn.assistant_message or {"role": "assistant", "content": turn.text})
         if not turn.calls:
-            result.answer = turn.text
+            result.answer = normalize_dashes(turn.text)  # gpt-oss writes ids with U+2011: payments‑api
             return result
         outputs = []
         for call in turn.calls:  # results of one turn go back together

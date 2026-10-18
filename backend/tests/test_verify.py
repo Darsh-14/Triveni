@@ -72,3 +72,11 @@ def test_invented_names_are_caught_without_ids(loaded):
     # ordinary hyphenated words and names the user wrote are not flagged
     v = verify(g, "This is a tier-1, on-call follow-up for my-new-api.", set(), "what about my-new-api?", "")
     assert v["unknown"] == []
+
+
+def test_unicode_hyphens_in_ids_are_not_mistaken_for_invented_ids(loaded):
+    """gpt-oss writes ids with U+2011 (non-breaking hyphen); the id must still be read whole, not cut at the dash."""
+    g = get_graph("test_acme")
+    answer = "Page per:arjun‑mehta [doc:oncall‑schedule] for payments‑api."
+    v = verify(g, answer, {"per:arjun-mehta", "doc:oncall-schedule", "svc:payments-api"})
+    assert v["verdict"] == "verified" and v["unknown"] == [] and "doc:oncall-schedule" in v["grounded"]
