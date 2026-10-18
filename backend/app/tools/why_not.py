@@ -21,6 +21,19 @@ OPTIONAL MATCH (p)-[k:KNOWS]->(s)
 RETURN t.id, r.source_doc, p.id, p.name, coalesce(k.weight, 0) AS w ORDER BY w DESC, p.id
 """
 KNOWERS = "MATCH (p:Person)-[k:KNOWS]->(s:Service {name: $service}) RETURN p.id, p.name, k.weight ORDER BY k.weight DESC, p.id LIMIT 3"
+
+# Nobody on call: who is on call right now for a service within 2 dependency hops (either direction), ranked by how
+# well they know this one (derived KNOWS), then by distance - the nearest awake person who can help
+NEARBY = """
+MATCH (s:Service {name: $service})
+MATCH near=(s)-[:DEPENDS_ON*1..2]-(n:Service)
+WHERE n <> s AND all(r IN relationships(near) WHERE r.valid_to IS NULL)
+WITH s, n, min(length(near)) AS hops
+MATCH (p:Person)-[c:ON_CALL_FOR]->(n) WHERE c.valid_to IS NULL
+OPTIONAL MATCH (p)-[k:KNOWS]->(s)
+RETURN p.id, p.name, n.id, n.name, hops, coalesce(k.weight, 0) AS weight
+ORDER BY weight DESC, hops, p.id LIMIT 3
+"""
 ALLOWED_DEPTHS = {1, 2, 3, 4}
 
 
@@ -88,13 +101,24 @@ def why_not(graph, kind: str, service: str, other: str | None = None, depth: int
         paths += [{"nodes": [c["id"], owner], "edges": [edge_ref("MEMBER_OF", c["id"], owner)]} for c in contacts]
     sources = sorted({h["source"] for h in history if h["source"]} | {h["ended_by"] for h in history if h["ended_by"]}
                      | ({owner_rows[0][1]} if owner_rows and owner_rows[0][1] else set()))
+    nearby = []
+    if kind == "on_call" and not found:  # nobody on call: the nearest people who are, ranked by what they know
+        nearby = [{"id": pid, "name": name, "on_call_for": nid, "on_call_for_name": nname, "hops": hops, "knows_weight": w}
+                  for pid, name, nid, nname, hops, w in ro(graph, NEARBY, params)]
+        for n in nearby:
+            paths.append({"nodes": [n["id"], n["on_call_for"]], "edges": [edge_ref("ON_CALL_FOR", n["id"], n["on_call_for"])]})
     data = {"kind": kind, "service": svc_id, "exists": bool(found), "found": found, "checked": check,
-            "history": history, "owner_team": owner, "suggested_contacts": contacts, "people_who_know_it": knowers}
+            "history": history, "owner_team": owner, "suggested_contacts": contacts, "people_who_know_it": knowers,
+            "nearby_on_call": nearby}
     what = "on-call engineer" if kind == "on_call" else "owning team"
     explanation = (f"{service} has a current {what}: {', '.join(found)}." if found else
                    f"No current {what} for {service}: the pattern matched 0 edges"
                    + (f" ({len(history)} past edge(s) ended)" if history else " and none ever existed")
-                   + (f". Owner {owner}; best contacts {', '.join(c['name'] for c in contacts)}." if owner and contacts else "."))
-    return ToolResult(data=data, cypher="\n\n".join([check, history_q.strip(), OWNER_TEAM.strip(), KNOWERS]),
+                   + (f". Owner {owner}; best contacts {', '.join(c['name'] for c in contacts)}." if owner and contacts else ".")
+                   + (" Nearest on-call now: " + "; ".join(
+                       f"{n['name']} (on call for {n['on_call_for_name']}, {n['hops']} hop(s) away"
+                       + (", knows it" if n["knows_weight"] else "") + ")" for n in nearby) + "." if nearby else ""))
+    return ToolResult(data=data, cypher="\n\n".join([check, history_q.strip(), OWNER_TEAM.strip(), KNOWERS]
+                                                    + ([NEARBY.strip()] if nearby else [])),
                       params=params, paths=paths, sources=sources, explanation=explanation,
                       outcome="answered" if found else "not_in_graph")

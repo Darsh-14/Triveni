@@ -1,5 +1,6 @@
 """team_services (Track 03): what a team currently owns, with on-call and runbooks that cite superseded decisions."""
 from backend.app.tools.base import ToolResult, edge_ref, ro, tool
+from backend.app.tools.describe import REACH
 
 OWNED = """
 MATCH (t:Team)-[o:OWNS]->(s:Service) WHERE (t.id = $team OR toLower(t.name) = toLower($team)) AND o.valid_to IS NULL
@@ -45,8 +46,16 @@ def team_services(graph, team: str) -> ToolResult:
         paths.append({"nodes": [doc, old], "edges": [edge_ref("MENTIONS", doc, old)], "stale": True})
         sources.add(doc)
     stale = [r["document"] for s in services.values() for r in s["stale_runbooks"]]
+    # who outside the team depends on it: other teams' services within 3 hops of current DEPENDS_ON (describe's reach)
+    row = ro(graph, REACH["Team"], {"id": team_id}) if team_id else []
+    dependent_teams, dependent_services = (sorted(row[0][0]), row[0][1]) if row else ([], 0)
     return ToolResult(
-        data={"team": team_id or team, "services": list(services.values()), "stale_runbooks": stale},
-        cypher=OWNED.strip() + "\n\n" + STALE.strip(), params=params | {"ids": list(services)}, paths=paths, sources=sorted(sources),
+        data={"team": team_id or team, "services": list(services.values()), "stale_runbooks": stale,
+              "dependent_teams": dependent_teams, "dependent_services": dependent_services},
+        cypher=OWNED.strip() + "\n\n" + STALE.strip() + "\n\n" + REACH["Team"].strip(),
+        params=params | {"ids": list(services), "id": team_id}, paths=paths, sources=sorted(sources),
         explanation=(f"{team_id} currently owns {len(services)} service(s): {', '.join(s['name'] for s in services.values())}; "
-                     f"stale runbooks: {', '.join(stale) or 'none'}.") if services else f"No current services for team {team}.")
+                     f"stale runbooks: {', '.join(stale) or 'none'}. {dependent_services} service(s) of "
+                     f"{len(dependent_teams)} other team(s) depend on them within 3 hops"
+                     + (f" ({', '.join(dependent_teams)})." if dependent_teams else "."))
+                    if services else f"No current services for team {team}.")

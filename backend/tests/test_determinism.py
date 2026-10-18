@@ -196,3 +196,39 @@ def test_find_services_filters_on_current_edges(loaded):
 ])
 def test_rules_planner_filters_services(loaded, question, plan):
     assert RulesProvider.plan(question, spot(get_graph(T), question)) == plan
+
+
+def _blast(service):
+    return {a["id"] for a in run_tool(T, "blast_radius", {"service": service}).data["affected"]}
+
+
+def test_owner_of_names_who_owns_what_it_needs_and_who_to_escalate_to(loaded):
+    r = run_tool(T, "owner_of", {"service": "payments-api"})
+    up = {u["id"]: u for u in r.data["upstream"]}
+    assert up["svc:auth-proxy"]["hops"] == 1 and up["svc:legacy-fax-gateway"]["team"] is None  # an unowned dependency
+    members = {row[0] for row in get_graph(T).ro_query(
+        "MATCH (p:Person)-[m:MEMBER_OF]->(:Team {id: 'team:payments'}) WHERE m.valid_to IS NULL RETURN p.id").result_set}
+    esc = r.data["escalation"]
+    assert esc and {e["id"] for e in esc} <= members  # teammates only
+    assert [e["knows_weight"] for e in esc] == sorted((e["knows_weight"] for e in esc), reverse=True)
+
+
+def test_why_not_names_the_nearest_on_call_when_nobody_is(loaded):
+    near = run_tool(T, "why_not", {"kind": "on_call", "service": "billing-batch"}).data["nearby_on_call"]
+    assert near and all(n["hops"] in (1, 2) for n in near)
+    for n in near:  # each one really is on call for a service within 2 current dependency hops
+        rows = get_graph(T).ro_query(
+            "MATCH (p:Person {id: $p})-[c:ON_CALL_FOR]->(n:Service {id: $n}) WHERE c.valid_to IS NULL "
+            "MATCH q=(:Service {name: 'billing-batch'})-[:DEPENDS_ON*1..2]-(n) RETURN count(q)",
+            {"p": n["id"], "n": n["on_call_for"]}).result_set
+        assert rows[0][0] > 0
+
+
+def test_describe_reach_matches_independent_traversals(loaded):
+    assert set(run_tool(T, "describe", {"entity": "inc:0042"}).data["reach"]["downstream_3_hops"]) == _blast("payments-api")
+    svc = run_tool(T, "describe", {"entity": "payments-api"}).data["reach"]
+    assert set(svc["downstream_3_hops"]) == _blast("payments-api") and "svc:auth-proxy" in svc["upstream_3_hops"]
+    adr = run_tool(T, "describe", {"entity": "ADR-019"}).data["reach"]
+    assert adr["supersedes_chain"] == ["adr:007"] and set(adr["protected_downstream"]) == _blast("orders-api")
+    team = run_tool(T, "team_services", {"team": "Ledger"}).data
+    assert team["dependent_services"] > 0 and "Ledger" not in team["dependent_teams"]

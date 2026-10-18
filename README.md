@@ -97,14 +97,13 @@ The graph is the agents' context layer, not a store they occasionally read. Remo
 | Which data it can see | The tenant picks the graph; tools never receive a tenant argument |
 
 ### How deep the graph work goes
-Measured from the Cypher each tool runs on the demo tenant.
+Every read tool answers with a traversal or an algorithm, never a single lookup. Measured from the Cypher each one runs.
 
 | Kind of graph work | Tools | What only a graph gives |
 |---|---|---|
-| Variable-length traversal (3–4 hops, current edges only) | `blast_radius`, `shortest_path`, `recent` (each deploy's reach), `find_services` (transitive dependents) | A routine email-sender deploy reaches 35 services within 3 hops, while payments-api 2.14.0 reaches 5; unowned pdf-renderer-v1 has 31 dependents |
+| Variable-length traversal (2–4 hops, current edges only) | `blast_radius`, `shortest_path`, `recent` (each deploy's reach), `find_services` (transitive dependents), `owner_of` (owners and on-call of what a service needs, 2 hops upstream), `why_not` (nearest on-call within 2 hops), `describe` (each entity's reach), `team_services` (other teams depending on it) | A routine email-sender deploy reaches 35 services within 3 hops, while payments-api 2.14.0 reaches 5; 17 services of 7 other teams depend on Team Ledger; nobody is on call for pdf-renderer-v1, but the graph names the nearest people who are |
 | Graph algorithms | `critical_services` (PageRank), `key_people` (betweenness), `find_orphans` (WCC), `what_if` (`GRAPH.COPY`, then algorithms rerun on the copy) | Global structure: who bridges teams, what is central, what nobody is responsible for |
-| Neighbourhood reasoning (2 hops, derived edges) | `recall` (episodes through shared entities), `similar_incidents`, `who_knows` (KNOWS built from multi-hop evidence), `decision_trail` (SUPERSEDES chains) | Memory found by structure rather than text; expertise derived from what people actually did |
-| Direct lookups (1 hop) | `owner_of`, `describe`, `why_not`, `team_services` | Current facts with their sources and history; deliberately simple |
+| Neighbourhood reasoning over derived edges | `recall` (episodes through shared entities), `similar_incidents`, `who_knows` and `owner_of` escalation (KNOWS, built from deploys, resolved incidents, decisions and docs), `decision_trail` (SUPERSEDES chains) | Memory found by structure rather than text; expertise derived from what people actually did |
 
 ## Track 01: Act on connected data
 | Key focus | Feature |

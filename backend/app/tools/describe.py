@@ -84,10 +84,80 @@ def describe(graph, entity: str) -> ToolResult:
     detail = "; ".join(parts) if parts else "no current facts"
     head = f"{label} {name} ({entity})" + (f" [{', '.join(f'{k}: {v}' for k, v in attrs.items() if k != 'summary' and k != 'rationale')}]"
                                            if attrs else "")
+    reach, reach_text = {}, ""
+    if label in REACH:  # the multi-hop consequence of this entity (see REACH)
+        row = ro(graph, REACH[label], params)
+        reach, reach_text = _reach(label, row[0] if row else None)
     return ToolResult(
         data={"id": entity, "label": label, "name": name, "attributes": attrs, "current": current,
-              "history": history, "knows": knows},
-        cypher=NODE + "\n\n" + EDGES.strip() + ("\n\n" + KNOWS.strip() if label == "Person" else ""),
+              "history": history, "knows": knows, "reach": reach},
+        cypher=NODE + "\n\n" + EDGES.strip() + ("\n\n" + KNOWS.strip() if label == "Person" else "")
+               + ("\n\n" + REACH[label].strip() if label in REACH else ""),
         params=params, paths=paths, sources=sorted(sources),
-        explanation=f"{head}: {detail}." + (f" {len(history)} ended fact(s) kept as history." if history else ""),
+        explanation=f"{head}: {detail}." + reach_text
+                    + (f" {len(history)} ended fact(s) kept as history." if history else ""),
     )
+
+
+# What each kind of entity reaches through the graph, beyond its own edges (current DEPENDS_ON only, 3 hops):
+#   Service   what it needs (upstream) and what needs it (downstream)
+#   Team      other teams whose services depend on this team's services
+#   Incident  everything downstream of the services it affected
+#   Decision  the full SUPERSEDES chain it ends, and every service its constraint protects downstream
+#   Person    the services that depend on what this person knows (their knowledge's blast radius)
+CURRENT_DEPS = "all(r IN relationships(reach) WHERE r.valid_to IS NULL)"
+REACH = {
+    "Service": f"""
+MATCH (s:Service {{id: $id}})
+OPTIONAL MATCH reach=(s)-[:DEPENDS_ON*1..3]->(u:Service) WHERE {CURRENT_DEPS}
+WITH s, collect(DISTINCT u.id) AS upstream
+OPTIONAL MATCH reach=(x:Service)-[:DEPENDS_ON*1..3]->(s) WHERE {CURRENT_DEPS}
+RETURN upstream, collect(DISTINCT x.id)""",
+    "Team": f"""
+MATCH (t:Team {{id: $id}})-[o:OWNS]->(s:Service) WHERE o.valid_to IS NULL
+MATCH reach=(x:Service)-[:DEPENDS_ON*1..3]->(s) WHERE {CURRENT_DEPS}
+MATCH (ot:Team)-[oo:OWNS]->(x) WHERE oo.valid_to IS NULL AND ot <> t
+RETURN collect(DISTINCT ot.name), count(DISTINCT x)""",
+    "Incident": f"""
+MATCH (i:Incident {{id: $id}})-[:AFFECTED]->(s:Service)
+OPTIONAL MATCH reach=(x:Service)-[:DEPENDS_ON*1..3]->(s) WHERE {CURRENT_DEPS}
+RETURN collect(DISTINCT s.id), collect(DISTINCT x.id)""",
+    "Decision": f"""
+MATCH (d:Decision {{id: $id}})
+OPTIONAL MATCH (d)-[:SUPERSEDES*1..5]->(old:Decision)
+WITH d, collect(DISTINCT old.id) AS supersedes
+OPTIONAL MATCH (d)-[:GOVERNS]->(s:Service)
+OPTIONAL MATCH reach=(x:Service)-[:DEPENDS_ON*1..3]->(s) WHERE {CURRENT_DEPS}
+RETURN supersedes, collect(DISTINCT s.id), collect(DISTINCT x.id)""",
+    "Person": f"""
+MATCH (p:Person {{id: $id}})-[:KNOWS]->(s:Service)
+OPTIONAL MATCH reach=(x:Service)-[:DEPENDS_ON*1..3]->(s) WHERE {CURRENT_DEPS}
+RETURN collect(DISTINCT s.id), collect(DISTINCT x.id)""",
+}
+
+
+def _reach(label: str, row) -> tuple[dict, str]:
+    if not row:
+        return {}, ""
+    if label == "Service":
+        up, down = sorted(row[0]), sorted(row[1])
+        return ({"upstream_3_hops": up, "downstream_3_hops": down},
+                f" Within 3 hops it needs {len(up)} service(s) and {len(down)} service(s) need it.")
+    if label == "Team":
+        teams, n = sorted(row[0]), row[1]
+        return ({"dependent_teams": teams, "dependent_services": n},
+                f" {n} service(s) of {len(teams)} other team(s) depend on its services within 3 hops"
+                + (f" ({', '.join(teams)})." if teams else "."))
+    if label == "Incident":
+        hit, down = sorted(row[0]), sorted(row[1])
+        return ({"affected": hit, "downstream_3_hops": down},
+                f" Downstream of what it hit: {len(down)} service(s) within 3 hops" + (f" ({', '.join(down[:6])})." if down else "."))
+    if label == "Decision":
+        chain, governs, down = row[0], sorted(row[1]), sorted(row[2])
+        return ({"supersedes_chain": chain, "governs": governs, "protected_downstream": down},
+                (f" It supersedes {' -> '.join(chain)}." if chain else "")
+                + f" Its constraint protects {len(governs) + len(down)} service(s): {len(governs)} governed directly"
+                + f" and {len(down)} depending on them within 3 hops.")
+    knows, down = sorted(row[0]), sorted(row[1])
+    return ({"knows": knows, "dependents_of_known": down},
+            f" {len(down)} service(s) depend within 3 hops on what this person knows.")

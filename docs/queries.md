@@ -532,6 +532,71 @@ An empty result has its own outcome, `no_rows`: a model-written query that match
 
 Refusals and FalkorDB errors come back as `outcome: "refused"` with the reason, so the model can fix the query once. For example, FalkorDB has no `EXISTS { }` subqueries, and the tool description says what to use instead. The result carries the exact query, is marked `model_written`, and its ids count as evidence for the proof check.
 
+### Multi-hop follow-ups on the lookup tools **[01] [03]**
+Each direct-lookup tool also answers the next question an on-call engineer asks, by traversal over current edges.
+
+`owner_of`: who owns and is on call for what the service needs (1–2 hops upstream), and escalation by derived expertise among the owning team's members.
+```cypher
+MATCH up=(s:Service {name: $service})-[:DEPENDS_ON*1..2]->(u:Service)
+WHERE all(r IN relationships(up) WHERE r.valid_to IS NULL)
+WITH u, up ORDER BY length(up)
+WITH u, collect([n IN nodes(up) | n.id])[0] AS path
+OPTIONAL MATCH (t:Team)-[o:OWNS]->(u) WHERE o.valid_to IS NULL
+OPTIONAL MATCH (p:Person)-[c:ON_CALL_FOR]->(u) WHERE c.valid_to IS NULL
+RETURN u.id, u.name, path, t.id, t.name, p.id, p.name
+ORDER BY size(path), u.id
+
+MATCH (t:Team)-[o:OWNS]->(s:Service {name: $service}) WHERE o.valid_to IS NULL
+MATCH (p:Person)-[m:MEMBER_OF]->(t) WHERE m.valid_to IS NULL
+OPTIONAL MATCH (p)-[k:KNOWS]->(s)
+WITH p, coalesce(k.weight, 0) AS weight WHERE weight > 0
+RETURN p.id, p.name, weight ORDER BY weight DESC, p.id LIMIT 3
+```
+`why_not` (on_call, nothing found): the nearest people on call, for services within 2 dependency hops in either direction, ranked by how well they know this one.
+```cypher
+MATCH (s:Service {name: $service})
+MATCH near=(s)-[:DEPENDS_ON*1..2]-(n:Service)
+WHERE n <> s AND all(r IN relationships(near) WHERE r.valid_to IS NULL)
+WITH s, n, min(length(near)) AS hops
+MATCH (p:Person)-[c:ON_CALL_FOR]->(n) WHERE c.valid_to IS NULL
+OPTIONAL MATCH (p)-[k:KNOWS]->(s)
+RETURN p.id, p.name, n.id, n.name, hops, coalesce(k.weight, 0) AS weight
+ORDER BY weight DESC, hops, p.id LIMIT 3
+```
+`describe` and `team_services`: each entity's reach. A service: upstream and downstream within 3 hops. A team: other teams depending on it. An incident: everything downstream of what it hit. A decision: the SUPERSEDES chain it ends and the services its constraint protects. A person: what depends on what they know.
+```cypher
+// Service
+MATCH (s:Service {id: $id})
+OPTIONAL MATCH reach=(s)-[:DEPENDS_ON*1..3]->(u:Service) WHERE all(r IN relationships(reach) WHERE r.valid_to IS NULL)
+WITH s, collect(DISTINCT u.id) AS upstream
+OPTIONAL MATCH reach=(x:Service)-[:DEPENDS_ON*1..3]->(s) WHERE all(r IN relationships(reach) WHERE r.valid_to IS NULL)
+RETURN upstream, collect(DISTINCT x.id)
+
+// Team
+MATCH (t:Team {id: $id})-[o:OWNS]->(s:Service) WHERE o.valid_to IS NULL
+MATCH reach=(x:Service)-[:DEPENDS_ON*1..3]->(s) WHERE all(r IN relationships(reach) WHERE r.valid_to IS NULL)
+MATCH (ot:Team)-[oo:OWNS]->(x) WHERE oo.valid_to IS NULL AND ot <> t
+RETURN collect(DISTINCT ot.name), count(DISTINCT x)
+
+// Incident
+MATCH (i:Incident {id: $id})-[:AFFECTED]->(s:Service)
+OPTIONAL MATCH reach=(x:Service)-[:DEPENDS_ON*1..3]->(s) WHERE all(r IN relationships(reach) WHERE r.valid_to IS NULL)
+RETURN collect(DISTINCT s.id), collect(DISTINCT x.id)
+
+// Decision
+MATCH (d:Decision {id: $id})
+OPTIONAL MATCH (d)-[:SUPERSEDES*1..5]->(old:Decision)
+WITH d, collect(DISTINCT old.id) AS supersedes
+OPTIONAL MATCH (d)-[:GOVERNS]->(s:Service)
+OPTIONAL MATCH reach=(x:Service)-[:DEPENDS_ON*1..3]->(s) WHERE all(r IN relationships(reach) WHERE r.valid_to IS NULL)
+RETURN supersedes, collect(DISTINCT s.id), collect(DISTINCT x.id)
+
+// Person
+MATCH (p:Person {id: $id})-[:KNOWS]->(s:Service)
+OPTIONAL MATCH reach=(x:Service)-[:DEPENDS_ON*1..3]->(s) WHERE all(r IN relationships(reach) WHERE r.valid_to IS NULL)
+RETURN collect(DISTINCT s.id), collect(DISTINCT x.id)
+```
+
 ## UI support (read-only)
 
 ### Node detail for the right panel **[F] [03]**
