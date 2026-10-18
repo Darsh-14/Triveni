@@ -75,7 +75,7 @@ function evidenceOf(steps: Step[]) {
 }
 
 type Flyout = "scenarios" | "conversations" | "tools" | null;
-interface GraphState { nodes: GraphNode[]; edges: GraphEdge[]; roots: string[]; title: string; entryId: string | null }
+interface GraphState { nodes: GraphNode[]; edges: GraphEdge[]; roots: string[]; title: string; entryId: string | null; spotlight?: Set<string> | null }
 
 export default function Triveni() {
   const [tenants, setTenants] = useState<string[]>([]);
@@ -94,6 +94,8 @@ export default function Triveni() {
   const [graph, setGraph] = useState<GraphState>({ nodes: [], edges: [], roots: [], title: "", entryId: null });
   const [layout, setLayout] = useState<LayoutName>("force");
   const [view, setView] = useState<"3d" | "2d" | "table">("3d"); // 3D by default; 2D stays as a flat fallback
+  const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -105,6 +107,7 @@ export default function Triveni() {
   const [modKey, setModKey] = useState("Ctrl");
   const [panes, setPanes] = useState(DEFAULT_PANES);
   const [compare, setCompare] = useState<Compare>("both");
+  const [overviewData, setOverviewData] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null); // the 3D base
   const composer = useRef<HTMLInputElement>(null);
   const threadEnd = useRef<HTMLDivElement>(null);
   const aborts = useRef(new Map<string, AbortController>());
@@ -124,6 +127,7 @@ export default function Triveni() {
       const o = await api.overview(t);
       setGraph({ nodes: o.nodes, edges: o.edges, roots: [], title: "Overview", entryId: null });
       setCatalog(o.nodes);
+      setOverviewData(o);
       setLayout("force"); setFocusStep(null); setSelected(null);
     } catch (e) {
       setError((e as Error).message);
@@ -134,7 +138,7 @@ export default function Triveni() {
     if (error) return;
     let live = true; // ignore a late response after the tenant changed
     api.overview(tenant)
-      .then((o) => { if (live) { setGraph({ nodes: o.nodes, edges: o.edges, roots: [], title: "Overview", entryId: null }); setCatalog(o.nodes); } })
+      .then((o) => { if (live) { setGraph({ nodes: o.nodes, edges: o.edges, roots: [], title: "Overview", entryId: null }); setCatalog(o.nodes); setOverviewData(o); } })
       .catch((e) => live && setError(e.message));
     return () => { live = false; };
   }, [tenant, error]);
@@ -184,8 +188,10 @@ export default function Triveni() {
     if (!ids.size) return;
     const nodes = await api.nodes(t, [...ids]);
     const first = entry.steps.find((s) => s.paths.length)?.tool ?? "";
-    setGraph({ nodes, edges: [...edges.values()], roots: rootsOf(entry.steps), title: entry.question, entryId: entry.id });
-    setLayout(TREE_TOOLS.has(first) ? "tree" : "force");
+    // spotlight = exactly what the tools returned (path nodes and edges), never words from the model's answer
+    setGraph({ nodes, edges: [...edges.values()], roots: rootsOf(entry.steps), title: entry.question, entryId: entry.id,
+               spotlight: new Set<string>([...ids, ...edges.keys()]) });
+    setLayout(TREE_TOOLS.has(first) && viewRef.current === "2d" ? "tree" : "force");
     setFocusStep(null); setSelected(null); setCompare("both");
   }, []);
 
@@ -197,6 +203,16 @@ export default function Triveni() {
     const { ids, edges } = evidenceOf([step]);
     return new Set<string>([...ids, ...edges.keys()]);
   }, [focusStep, entries, graph.entryId]);
+
+  // 3D shows an answer inside the whole map: overview + the answer's evidence, merged by id
+  const graph3d = useMemo(() => {
+    if (!graph.spotlight || !overviewData) return graph;
+    const nodes = new Map(overviewData.nodes.map((n) => [n.id, n]));
+    graph.nodes.forEach((n) => nodes.set(n.id, n));
+    const edges = new Map(overviewData.edges.map((e) => [edgeKey(e), e]));
+    graph.edges.forEach((e) => edges.set(edgeKey(e), e));
+    return { ...graph, nodes: [...nodes.values()], edges: [...edges.values()] };
+  }, [graph, overviewData]);
 
   const update = (id: string, patch: Partial<Entry>) =>
     setEntries((es) => es.map((e) => (e.id === id ? { ...e, ...patch } : e)));
@@ -558,7 +574,7 @@ export default function Triveni() {
           </div>
           <div className="relative isolate min-h-0 flex-1">
             {view === "3d" && (
-              <Graph3D nodes={graph.nodes} edges={graph.edges} roots={graph.roots} focus={focus} hover={hover}
+              <Graph3D nodes={graph3d.nodes} edges={graph3d.edges} roots={graph.roots} focus={focus} hover={hover} spotlight={graph.spotlight}
                        layout={layout} onLayout={setLayout} selected={selected} onSelect={selectNode}
                        onExpand={(id) => expandNode(id, 1)} compare={compare}
                        onUnavailable={() => { setView("2d"); setError("3D needs WebGL, which this browser has turned off: showing 2D"); }} />

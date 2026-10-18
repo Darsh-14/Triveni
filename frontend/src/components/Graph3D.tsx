@@ -27,6 +27,7 @@ interface Props {
   onSelect: (id: string | null) => void;
   onExpand?: (id: string) => void;
   compare?: Compare;
+  spotlight?: Set<string> | null; // node ids + edge keys from the tools' paths: open their teams, light them, fly to them
   onUnavailable?: () => void; // no WebGL here: the page falls back to 2D
 }
 
@@ -38,10 +39,11 @@ const ACCENT = "#ff1053";
 const INK = "#ffffff";
 const PAGE = "#03040a"; // deep space
 const LINK = "#9fb4ff"; // bright periwinkle on black
-const LINK_FAINT = "#2a3150";
+const LINK_FAINT = "#3a4470"; // dimmed lines stay visible
 const OWNS_LINK = "#5ec2b7"; // team ownership in teal
 const OLD = "#f2c14e";
-const LABEL_LIMIT = 30; // above this many nodes, only some labels are drawn
+const LABEL_LIMIT = 30;
+const MEMORY = new Set(["Episode", "Lesson", "Procedure", "Message", "Conversation"]); // above this many nodes, only some labels are drawn
 
 const idOf = (end: string | N) => (typeof end === "string" ? end : end.id);
 
@@ -78,13 +80,25 @@ function closer(g: ForceGraph3DInstance<N, L>, f: number) {
   g.cameraPosition({ x: t.x + (c.x - t.x) * f, y: t.y + (c.y - t.y) * f, z: t.z + (c.z - t.z) * f }, t, 300);
 }
 
-export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover, roots, layout, onLayout, selected, onSelect, onExpand, compare = "both", onUnavailable }: Props) {
+/** A stable small number per id, so each line keeps its own bend between renders. */
+function hashOf(id: string) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover, roots, layout, onLayout, selected, onSelect, onExpand, compare = "both", onUnavailable, spotlight = null }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const fg = useRef<ForceGraph3DInstance<N, L> | null>(null);
   const parts = useRef(new Map<string, Parts>());
   const cache = useRef(new Map<string, N>()); // node objects keep their positions across updates
   const fitNext = useRef(true);
   const refitOnce = useRef(false);
+  const spotlightRef = useRef<Set<string> | null>(null);
+  const revealRef = useRef<Set<string> | null>(null); // a click just revealed these: frame them
+  const selectedRef = useRef<string | null>(null);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+  useEffect(() => { spotlightRef.current = spotlight; if (spotlight?.size) refitOnce.current = true; }, [spotlight]);
   const lastClick = useRef<{ id: string; t: number; timer?: ReturnType<typeof setTimeout> } | null>(null);
   const handlers = useRef({ onSelect, onExpand });
   useEffect(() => { handlers.current = { onSelect, onExpand }; }, [onSelect, onExpand]);
@@ -100,7 +114,7 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
 
-  const overview = useMemo(() => !roots.length && rawEdges.every((e) => e.type === "DEPENDS_ON" || e.type === "OWNS"), [roots, rawEdges]);
+  const overview = useMemo(() => rawNodes.some((n) => n.label === "Team") && rawEdges.some((e) => e.type === "OWNS"), [rawNodes, rawEdges]);
 
   // overview starts at team level: a closed team is one node with its service count, and the dependencies of its
   // services become one line per team pair (thicker the more there are). Double-click a team to open it.
@@ -113,13 +127,17 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
     rawEdges.filter((e) => e.type === "OWNS").forEach((e) => teamOf.set(e.target, e.source));
     const size = new Map<string, number>();
     teamOf.forEach((t) => size.set(t, (size.get(t) ?? 0) + 1));
-    const closed = (svc: string) => { const t = teamOf.get(svc); return t !== undefined && !openTeams.has(t); };
+    // teams holding anything the answer is about open on their own
+    const autoOpen = new Set<string>();
+    spotlight?.forEach((id) => { const t = teamOf.get(id); if (t) autoOpen.add(t); });
+    const isOpen = (t: string) => openTeams.has(t) || autoOpen.has(t);
+    const closed = (svc: string) => { const t = teamOf.get(svc); return t !== undefined && !isOpen(t); };
     const rep = (id: string) => (closed(id) ? teamOf.get(id)! : id);
     const nodes = rawNodes.filter((n) => !closed(n.id))
       .map((n) => (n.label === "Team" ? { ...n, name: `${n.name} · ${size.get(n.id) ?? 0}` } : n));
     const merged = new Map<string, GraphEdge>();
     for (const e of rawEdges) {
-      if (e.type === "OWNS") { if (openTeams.has(e.source)) merged.set(edgeKey(e), e); continue; }
+      if (e.type === "OWNS") { if (isOpen(e.source)) merged.set(edgeKey(e), e); continue; }
       const source = rep(e.source), target = rep(e.target);
       if (source === target) continue;
       const m = { ...e, source, target };
@@ -128,7 +146,7 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
       merged.set(k, m);
     }
     return { nodes, edges: [...merged.values()], lineCount };
-  }, [overview, rawNodes, rawEdges, openTeams]);
+  }, [overview, rawNodes, rawEdges, openTeams, spotlight]);
 
   const toggleTeam = useRef<(id: string) => boolean>(() => false);
   useEffect(() => {
@@ -159,6 +177,7 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
         .nodeLabel(() => "") // our own labels; no browser tooltip on top of them
         .linkLabel((l: L) => l.type)
         .linkDirectionalArrowLength(5).linkDirectionalArrowRelPos(1)
+        .linkCurvature(0.22).linkCurveRotation((l: L) => (hashOf(l.id) % 628) / 100)
         .linkDirectionalParticleWidth(1.8).linkDirectionalParticleSpeed(0.006)
         .warmupTicks(30).cooldownTicks(140)
         .onDagError(() => { /* a cycle: the tree layout places what it can, the rest stays force-directed */ })
@@ -174,7 +193,11 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
             return;
           }
           if (lastClick.current?.timer) clearTimeout(lastClick.current.timer);
-          const timer = setTimeout(() => { lastClick.current = null; handlers.current.onSelect(n.id); }, 260);
+          const timer = setTimeout(() => {
+            lastClick.current = null;
+            handlers.current.onSelect(n.id);
+            if (!toggleTeam.current(n.id)) handlers.current.onExpand?.(n.id); // reveal what is connected to it
+          }, 260);
           lastClick.current = { id: n.id, t: Date.now(), timer };
         })
         .onLinkClick((l: L) => {
@@ -186,6 +209,20 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
         .onEngineStop(() => {
           if (!fitNext.current) return;
           fitNext.current = false;
+          const reveal = revealRef.current;
+          revealRef.current = null;
+          if (reveal && reveal.size) {
+            // fly to the clicked node, close enough to read what just appeared around it
+            const c = cache.current.get(selectedRef.current ?? "");
+            if (c?.x !== undefined) {
+              const len = Math.hypot(c.x, c.y ?? 0, c.z ?? 0) || 1, k = 1 + 420 / len; // close enough to read, far enough that labels keep their size
+              g.cameraPosition({ x: c.x * k, y: (c.y ?? 0) * k, z: (c.z ?? 0) * k }, { x: c.x, y: c.y ?? 0, z: c.z ?? 0 }, 800);
+              setTimeout(() => applyFog(g), 850);
+              return;
+            }
+          }
+          const spot = spotlightRef.current;
+          if (spot && spot.size) { g.zoomToFit(700, 60, (n: N) => spot.has(n.id)); setTimeout(() => applyFog(g), 760); return; }
           g.zoomToFit(500, 12);
           setTimeout(() => { closer(g, 0.8); applyFog(g); }, 560);
         });
@@ -263,7 +300,14 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
       }
       const links: L[] = edges.filter((e) => ids.has(e.source) && ids.has(e.target))
         .map((e) => ({ id: edgeKey(e), source: e.source, target: e.target, type: e.type, old: Boolean(e.superseded || e.stale), superseded: Boolean(e.superseded) }));
-      if (!same) fitNext.current = !grows || refitOnce.current;
+      const refit = refitOnce.current;
+      if (refit) fitNext.current = true; else if (!same) fitNext.current = !grows;
+      if (grows && !refit) {
+        // nodes appeared next to something already on screen: frame the old ones they attach to plus the new ones
+        const fresh = next.filter((n) => !before.has(n.id)).map((n) => n.id);
+        revealRef.current = new Set<string>([...fresh, ...(selectedRef.current ? [selectedRef.current] : [])]);
+        fitNext.current = true;
+      }
       refitOnce.current = false;
       g.nodeThreeObject((n: N) => parts.current.get(n.id)?.group as Object3D);
       // layout: tree and radial are 3D DAG layouts rooted at the queried node; force otherwise
@@ -272,15 +316,16 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
       type LinkForce = { distance: (f: (l: L) => number) => LinkForce; strength: (f: (l: L) => number) => LinkForce };
       const linkForce = g.d3Force("link") as unknown as LinkForce | undefined;
       if (linkForce) {
-        linkForce.distance((l) => (overview ? (l.type === "OWNS" ? 18 : 95) : 45));
-        linkForce.strength((l) => (overview ? (l.type === "OWNS" ? 0.9 : 0.03) : 0.6));
+        // services far apart (dependencies), everything attached to a node (people, docs, deploys, incidents) close to it
+        linkForce.distance((l) => (overview ? (l.type === "OWNS" ? 18 : l.type === "DEPENDS_ON" ? 95 : 60) : 45));
+        linkForce.strength((l) => (overview ? (l.type === "OWNS" ? 0.9 : l.type === "DEPENDS_ON" ? 0.03 : 0.7) : 0.6));
       }
       // small graphs draw every label, so nodes keep a label's width apart; big ones only the solid's
       const collide = g.d3Force("collide") as unknown as { radius: (r: number) => unknown } | undefined;
-      collide?.radius(next.length <= LABEL_LIMIT ? 34 : 11);
+      collide?.radius(next.length <= LABEL_LIMIT ? 34 : 20);
       g.graphData({ nodes: next, links });
       setBuilt((b) => b + 1);
-      if (!grows) g.d3ReheatSimulation();
+      if (!grows || refit) g.d3ReheatSimulation(); // a new spotlight re-runs the settle, so the camera flies to it
     })();
     return () => { cancelled = true; };
   }, [nodes, edges, ready, overview]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -311,6 +356,7 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
     const litNodes = new Set<string>(), litLinks = new Set<string>(), ends = new Set<string>();
     let faded: ((id: string) => boolean) | null = null;
     const lightNode = (id: string) => { litNodes.add(id); adjacency.get(id)?.links.forEach((k) => litLinks.add(k)); };
+    spotlight?.forEach((id) => { if (id.includes("->")) litLinks.add(id); else litNodes.add(id); });
     if (hoverNode) lightNode(hoverNode);
     if (hover) litNodes.add(hover);
     if (selected) litNodes.add(selected);
@@ -324,7 +370,7 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
       const keep = new Set([selected, ...(adjacency.get(selected)?.nodes ?? [])]);
       const keepLinks = adjacency.get(selected)?.links ?? new Set<string>();
       faded = (id) => !(keep.has(id) || keepLinks.has(id));
-    }
+    } else if (spotlight?.size) faded = (id) => !spotlight.has(id);
     // before/after a change: ended edges and the edges that replaced them (same type, same target)
     const ended = edges.filter((e) => e.superseded);
     const replaced = new Set(edges.filter((e) => !e.superseded && ended.some((o) => o.type === e.type && o.target === e.target)).map(edgeKey));
@@ -333,7 +379,7 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
       ...(compare === "before" ? replaced : compare === "after" ? ended.map(edgeKey) : []),
     ]);
     return { litNodes, litLinks, ends, faded, hiddenLinks };
-  }, [hoverNode, hoverLink, hover, selected, pinned, focus, dim, adjacency, edges, hiddenTypes, compare]);
+  }, [hoverNode, hoverLink, hover, selected, pinned, focus, dim, adjacency, edges, hiddenTypes, compare, spotlight]);
 
   // node visuals: no rebuild, only material and label changes
   useEffect(() => {
@@ -345,17 +391,19 @@ export default function Graph3D({ nodes: rawNodes, edges: rawEdges, focus, hover
       const material = p.mesh.material as MeshLambertMaterial;
       const lit = state.litNodes.has(id) || state.ends.has(id);
       const fade = state.faded ? state.faded(id) : false;
-      material.opacity = fade ? 0.12 : 1;
+      material.opacity = fade ? 0.3 : 1; // dimmed, not removed
       // every node glows in its own colour; lit ones glow in the neon
       material.emissive.set(lit ? ACCENT : material.color);
       material.emissiveIntensity = lit ? 0.75 : 0.35;
       p.group.scale.setScalar(rootSet.has(id) ? 1.9 : lit ? 1.6 : 1.4);
       const orphan = overview && n?.kind === "Service" && !owned.has(id);
+      const memory = MEMORY.has(n?.kind ?? ""); // ids, not names: labelled only when hovered or selected
       p.label.visible = !fade && (!lots || lit || rootSet.has(id) || n?.kind === "Team" || orphan ||
-        (hoverNode !== null && (adjacency.get(hoverNode)?.nodes.has(id) ?? false)));
+        (hoverNode !== null && (adjacency.get(hoverNode)?.nodes.has(id) ?? false)) ||
+        (!memory && selected !== null && (adjacency.get(selected)?.nodes.has(id) ?? false))) && (!memory || lit || hoverNode === id); // the clicked node's neighbours
       p.label.color = orphan ? OLD : INK;
     });
-  }, [state, nodes, edges, roots, overview, hoverNode, adjacency, built]);
+  }, [state, nodes, edges, roots, overview, hoverNode, adjacency, built, selected]);
 
   // link visuals
   useEffect(() => {
